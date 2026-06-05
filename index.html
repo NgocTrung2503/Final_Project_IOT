@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Public Transport Tracker | Theo dõi Giao thông Công cộng</title>
+  <meta name="description" content="Hệ thống theo dõi xe buýt và metro theo thời gian thực tại TP. Hồ Chí Minh" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- App CSS -->
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+
+<!-- ─── Loading Overlay ─────────────────────────────────── -->
+<div id="loading-overlay">
+  <div class="loading-logo">🚌</div>
+  <div class="loading-title">Public Transport Tracker</div>
+  <div class="loading-sub">Đang tải dữ liệu thời gian thực...</div>
+  <div class="loading-bar-wrap">
+    <div class="loading-bar"></div>
+  </div>
+</div>
+
+<!-- ─── App ─────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <a class="header-logo" href="index.html">
+      <div class="logo-icon">🚍</div>
+      <div>
+        <div class="logo-text">TransTrack</div>
+        <div class="logo-sub">TP. HỒ CHÍ MINH</div>
+      </div>
+    </a>
+
+    <div class="header-sep"></div>
+
+    <nav class="header-nav">
+      <a class="nav-btn active" href="index.html">🗺️ Bản đồ</a>
+      <a class="nav-btn" href="dashboard.html">📊 Dashboard</a>
+      <a class="nav-btn" href="admin.html">⚙️ Admin</a>
+    </nav>
+
+    <div class="header-spacer"></div>
+
+    <!-- Connection status -->
+    <div class="conn-status">
+      <span class="conn-dot" id="conn-dot"></span>
+      <span id="conn-text">Đang kết nối...</span>
+    </div>
+
+    <!-- Clock -->
+    <div id="clock">--:--:--</div>
+
+    <!-- Action buttons -->
+    <div class="header-actions">
+      <button class="icon-btn" id="locate-btn" title="Vị trí của tôi">📍</button>
+      <button class="icon-btn" id="tile-toggle" title="Đổi bản đồ">🗺️</button>
+      <button class="icon-btn" id="sidebar-toggle" title="Ẩn/hiện bảng">☰</button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div id="content">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+
+      <!-- Search & Filters -->
+      <div class="sidebar-header">
+        <div class="sidebar-title">Phương tiện đang hoạt động</div>
+        <div style="position:relative">
+          <div class="search-wrap">
+            <span class="s-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="Tìm trạm xe buýt..." autocomplete="off" />
+          </div>
+          <div id="search-suggestions" class="search-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); z-index:100; max-height:200px; overflow-y:auto; box-shadow:var(--shadow-lg);"></div>
+        </div>
+      </div>
+
+      <!-- Nearest Stops -->
+      <div id="nearest-stops-panel" style="padding: 16px 20px; border-bottom: 1px solid var(--border); background:rgba(255,255,255,0.02)">
+        <div style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:12px; display:flex; justify-content:space-between;">
+          <span>📍 Trạm gần bạn nhất</span>
+          <button id="btn-refresh-location" class="icon-btn" style="width:24px; height:24px; padding:0; font-size:12px; background:none;" title="Cập nhật vị trí">🔄</button>
+        </div>
+        <div id="nearest-stops-list">
+          <div class="empty-state" style="font-size:12px; padding:10px 0;">Đang tìm vị trí của bạn...</div>
+        </div>
+      </div>
+
+      <div style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin:16px 20px 8px;">🚌 Vị trí xe hiện tại</div>
+
+      <!-- Vehicle List -->
+      <div id="vehicle-list">
+        <div class="empty-state">⏳ Đang tải dữ liệu...</div>
+      </div>
+
+      <!-- Route Toggle Panel -->
+      <div class="route-panel">
+        <div class="route-panel-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? '' : 'none'">
+          <span>🛣️ Tuyến đường</span>
+          <span style="color:var(--text-muted); font-size:12px">▾</span>
+        </div>
+        <div id="route-toggle-list"></div>
+      </div>
+
+    </aside>
+
+    <!-- Map Container -->
+    <div id="map-wrap">
+      <div id="map"></div>
+
+      <div id="map-fire-alert" class="map-fire-alert" role="alert" aria-live="assertive">
+        <div class="map-fire-icon">FIRE</div>
+        <div>
+          <div class="map-fire-title">Canh bao chay MQ2</div>
+          <div class="map-fire-text" id="map-fire-text">Phat hien khoi/khi tren xe. Khu vuc dang nhap nhay do.</div>
+        </div>
+      </div>
+
+      <!-- ─── IR Sensor Widget ──────────────────────────────── -->
+      <div id="ir-widget" style="
+        position:absolute; top:16px; right:16px; z-index:600;
+        background:rgba(8,12,20,0.92); backdrop-filter:blur(16px);
+        border:1px solid rgba(0,212,255,0.25); border-radius:16px;
+        padding:14px 18px; min-width:190px;
+        box-shadow:0 4px 24px rgba(0,212,255,0.15);
+        font-family: 'Inter', sans-serif;
+      ">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <span style="font-size:18px">📡</span>
+          <div>
+            <div style="font-size:11px; font-weight:700; color:#00d4ff; text-transform:uppercase; letter-spacing:1px;">Cảm biến IR</div>
+            <div style="font-size:10px; color:#4a5568;">Đếm hành khách thực tế</div>
+          </div>
+          <div id="ir-dot" style="width:8px; height:8px; border-radius:50%; background:#22c55e; margin-left:auto; box-shadow:0 0 6px #22c55e; animation:pulse 1.5s infinite;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:10px;">
+          <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:10px; padding:8px 12px; flex:1; text-align:center;">
+            <div style="font-size:11px; color:#22c55e; font-weight:600;">▲ Lên xe</div>
+            <div id="ir-count-in" style="font-size:22px; font-weight:800; color:#22c55e; line-height:1.2;">0</div>
+          </div>
+          <div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:8px 12px; flex:1; text-align:center;">
+            <div style="font-size:11px; color:#ef4444; font-weight:600;">▼ Xuống xe</div>
+            <div id="ir-count-out" style="font-size:22px; font-weight:800; color:#ef4444; line-height:1.2;">0</div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:11px; color:#94a3b8;">Trên xe hiện tại</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:16px;">👥</span>
+            <span id="ir-total" style="font-size:18px; font-weight:800; color:#f0f4ff;">0</span>
+            <span style="font-size:11px; color:#4a5568;">/80</span>
+          </div>
+        </div>
+
+        <!-- Mini bar -->
+        <div style="margin-top:8px; height:4px; border-radius:2px; background:rgba(255,255,255,0.08); overflow:hidden;">
+          <div id="ir-bar" style="height:100%; border-radius:2px; background:linear-gradient(90deg,#22c55e,#00d4ff); width:0%; transition:width 0.5s ease;"></div>
+        </div>
+        <div style="margin-top:4px; font-size:10px; color:#4a5568; text-align:right;" id="ir-pct">0% sức chứa</div>
+      </div>
+
+      <!-- Floating map controls -->
+      <div class="map-controls">
+        <button class="icon-btn" id="fit-all-btn" title="Xem toàn bộ tuyến" onclick="window._map && window._map.flyTo(window.APP_CONFIG.MAP_CENTER, window.APP_CONFIG.MAP_ZOOM, {animate:true,duration:1.2})">⊞</button>
+      </div>
+
+      <!-- Legend -->
+      <div style="position:absolute; bottom:40px; left:16px; background:rgba(13,21,37,0.9); border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:12px 16px; z-index:500; backdrop-filter:blur(12px);">
+        <div style="font-size:10px; font-weight:700; color:#4a5568; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Chú thích</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#94a3b8;">
+            <span>🚌</span> Xe buýt — <span style="color:#00d4ff">●</span> Đúng giờ &nbsp;<span style="color:#ef4444">●</span> Trễ
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#94a3b8;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#0d1525; border:2px solid #00d4ff;"></span> Điểm dừng
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- ─── Scripts ───────────────────────────────────────────── -->
+<!-- Firebase SDK (compat version) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- App Scripts -->
+<script src="js/firebase-config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/demo-data.js"></script>
+<script src="js/firebase-service.js"></script>
+<script src="js/vehicles.js"></script>
+<script src="js/routes.js"></script>
+<script src="js/map.js"></script>
+
+<script>
+  // Hide loading overlay after page loads
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const overlay = document.getElementById('loading-overlay');
+      if (overlay) overlay.classList.add('hidden');
+      setTimeout(() => { if (overlay) overlay.style.display = 'none'; }, 600);
+    }, 2000);
+  });
+</script>
+
+</body>
+</html>

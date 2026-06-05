@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đăng nhập Admin | TransTrack IoT</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at top left, #0d1a2e 0%, #080c14 60%, #0a0f1e 100%);
+    }
+
+    /* Grid bg */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .login-box {
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .login-card {
+      background: rgba(13,21,37,0.92);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px;
+      padding: 40px 36px 36px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(168,85,247,0.06);
+    }
+
+    /* Logo */
+    .login-logo {
+      width: 68px; height: 68px;
+      background: linear-gradient(135deg, #a855f7, #7c3aed);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 34px;
+      margin: 0 auto 18px;
+      box-shadow: 0 0 30px rgba(168,85,247,0.35);
+      animation: glow 2.5s ease infinite;
+    }
+    @keyframes glow {
+      0%,100% { box-shadow: 0 0 20px rgba(168,85,247,0.3); }
+      50%      { box-shadow: 0 0 45px rgba(168,85,247,0.6); }
+    }
+
+    .login-title {
+      text-align: center;
+      font-size: 22px; font-weight: 800;
+      color: #f0f4ff; margin-bottom: 4px;
+    }
+    .login-sub {
+      text-align: center;
+      font-size: 13px; color: #4a5568;
+      margin-bottom: 28px;
+    }
+    .admin-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(168,85,247,0.12);
+      border: 1px solid rgba(168,85,247,0.25);
+      color: #a855f7; font-size: 11px; font-weight: 700;
+      padding: 3px 10px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: 1px;
+      margin: 0 auto 28px; display: block; width: fit-content;
+    }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 11px; font-weight: 700;
+      color: #4a5568; margin-bottom: 6px;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .form-group input {
+      width: 100%;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 9px;
+      color: #f0f4ff; padding: 12px 14px;
+      font-size: 14px; transition: 0.2s ease;
+      font-family: 'Inter', sans-serif;
+    }
+    .form-group input:focus {
+      border-color: rgba(168,85,247,0.5);
+      box-shadow: 0 0 0 3px rgba(168,85,247,0.1);
+      outline: none;
+    }
+    .form-group input::placeholder { color: #2d3748; }
+
+    .btn-login {
+      width: 100%; padding: 13px;
+      background: linear-gradient(135deg, #a855f7, #7c3aed);
+      color: #fff; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 800;
+      cursor: pointer; transition: 0.25s ease;
+      margin-top: 8px; letter-spacing: 0.3px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-login:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(168,85,247,0.4); }
+    .btn-login:active { transform: translateY(0); }
+    .btn-login:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .error-msg {
+      color: #ef4444; font-size: 12px;
+      padding: 9px 12px; border-radius: 8px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.2);
+      margin-top: 12px; display: none;
+      text-align: center;
+    }
+
+    /* Demo hint */
+    .demo-hint {
+      margin-top: 24px;
+      padding: 14px;
+      background: rgba(168,85,247,0.05);
+      border: 1px dashed rgba(168,85,247,0.2);
+      border-radius: 10px;
+      font-size: 12px; color: #4a5568;
+      text-align: center; line-height: 1.8;
+    }
+    .demo-hint strong { color: #a855f7; }
+    .demo-hint .fill-btn {
+      display: inline-block; margin-top: 8px;
+      padding: 5px 14px; border-radius: 6px;
+      background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3);
+      color: #a855f7; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: 0.2s;
+    }
+    .demo-hint .fill-btn:hover { background: rgba(168,85,247,0.25); }
+
+    .back-link {
+      display: block; text-align: center;
+      margin-top: 20px; font-size: 12px;
+      color: #4a5568; text-decoration: none;
+      transition: 0.2s;
+    }
+    .back-link:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+<div class="login-box">
+  <div class="login-card">
+    <div class="login-logo">⚙️</div>
+    <div class="login-title">TransTrack Admin</div>
+    <div class="login-sub">Hệ thống quản trị xe bus IoT</div>
+    <span class="admin-tag">🔧 Khu vực quản trị</span>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label>Email quản trị viên</label>
+        <input type="email" id="email" placeholder="admin@iot.com" required autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Mật khẩu</label>
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn-login" id="btn-login">
+        🔐 Đăng nhập Admin
+      </button>
+      <div id="error-msg" class="error-msg">Sai email hoặc mật khẩu!</div>
+    </form>
+
+    <!-- Demo hint (chỉ hiện khi DEMO_MODE = true) -->
+    <div class="demo-hint" id="demo-hint" style="display:none">
+      <strong>Chế độ DEMO đang bật</strong><br/>
+      Email: <strong>admin@iot.com</strong> &nbsp;|&nbsp; Mật khẩu: <strong>admin123</strong><br/>
+      <span class="fill-btn" onclick="fillDemo()">Điền tự động →</span>
+    </div>
+  </div>
+
+  <a href="index.html" class="back-link">← Quay về Bản đồ</a>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/auth.js"></script>
+
+<script>
+  // Nếu đã đăng nhập rồi thì redirect thẳng vào admin
+  if (window.AppAuth.isLoggedIn()) {
+    window.location.href = 'admin.html';
+  }
+
+  // Hiện demo hint
+  if (window.APP_CONFIG.DEMO_MODE) {
+    document.getElementById('demo-hint').style.display = 'block';
+  }
+
+  function fillDemo() {
+    document.getElementById('email').value = 'admin@iot.com';
+    document.getElementById('password').value = 'admin123';
+  }
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-login');
+    const errEl = document.getElementById('error-msg');
+
+    btn.disabled = true;
+    btn.textContent = 'Đang xác thực...';
+    errEl.style.display = 'none';
+
+    const email = document.getElementById('email').value;
+    const pass  = document.getElementById('password').value;
+    const ok    = await window.AppAuth.login(email, pass);
+
+    if (ok) {
+      btn.textContent = '✅ Thành công! Đang chuyển trang...';
+      setTimeout(() => { window.location.href = 'admin.html'; }, 500);
+    } else {
+      btn.disabled = false;
+      btn.textContent = '🔐 Đăng nhập Admin';
+      errEl.style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>
