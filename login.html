@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Đăng nhập Admin | TransTrack IoT</title>
+  <title>ÄÄƒng nháº­p Admin | TransTrack IoT</title>
   <link rel="stylesheet" href="css/main.css" />
   <style>
     body {
@@ -123,28 +123,7 @@
       margin-top: 12px; display: none;
       text-align: center;
     }
-
-    /* Demo hint */
-    .demo-hint {
-      margin-top: 24px;
-      padding: 14px;
-      background: rgba(168,85,247,0.05);
-      border: 1px dashed rgba(168,85,247,0.2);
-      border-radius: 10px;
-      font-size: 12px; color: #4a5568;
-      text-align: center; line-height: 1.8;
-    }
-    .demo-hint strong { color: #a855f7; }
-    .demo-hint .fill-btn {
-      display: inline-block; margin-top: 8px;
-      padding: 5px 14px; border-radius: 6px;
-      background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3);
-      color: #a855f7; font-size: 12px; font-weight: 600;
-      cursor: pointer; transition: 0.2s;
-    }
-    .demo-hint .fill-btn:hover { background: rgba(168,85,247,0.25); }
-
-    .back-link {
+.back-link {
       display: block; text-align: center;
       margin-top: 20px; font-size: 12px;
       color: #4a5568; text-decoration: none;
@@ -154,7 +133,6 @@
   </style>
 </head>
 <body>
-
 <div class="login-box">
   <div class="login-card">
     <div class="login-logo">⚙️</div>
@@ -176,14 +154,7 @@
       </button>
       <div id="error-msg" class="error-msg">Sai email hoặc mật khẩu!</div>
     </form>
-
-    <!-- Demo hint (chỉ hiện khi DEMO_MODE = true) -->
-    <div class="demo-hint" id="demo-hint" style="display:none">
-      <strong>Chế độ DEMO đang bật</strong><br/>
-      Email: <strong>admin@iot.com</strong> &nbsp;|&nbsp; Mật khẩu: <strong>admin123</strong><br/>
-      <span class="fill-btn" onclick="fillDemo()">Điền tự động →</span>
-    </div>
-  </div>
+</div>
 
   <a href="index.html" class="back-link">← Quay về Bản đồ</a>
 </div>
@@ -191,44 +162,34 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="js/firebase-config.js"></script>
-<script src="js/auth.js"></script>
+<script src="js/firebase-config.js" charset="UTF-8"></script>
+<script src="js/auth.js" charset="UTF-8"></script>
 
 <script>
   // Nếu đã đăng nhập rồi thì redirect thẳng vào admin
   if (window.AppAuth.isLoggedIn()) {
     window.location.href = 'admin.html';
   }
-
-  // Hiện demo hint
-  if (window.APP_CONFIG.DEMO_MODE) {
-    document.getElementById('demo-hint').style.display = 'block';
-  }
-
-  function fillDemo() {
-    document.getElementById('email').value = 'admin@iot.com';
-    document.getElementById('password').value = 'admin123';
-  }
-
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const btn = document.getElementById('btn-login');
+    const btn   = document.getElementById('btn-login');
     const errEl = document.getElementById('error-msg');
 
     btn.disabled = true;
-    btn.textContent = 'Đang xác thực...';
+    btn.innerHTML = '<span style="opacity:0.7">Đang xác thực...</span>';
     errEl.style.display = 'none';
 
-    const email = document.getElementById('email').value;
-    const pass  = document.getElementById('password').value;
-    const ok    = await window.AppAuth.login(email, pass);
+    const email  = document.getElementById('email').value.trim();
+    const pass   = document.getElementById('password').value;
+    const result = await window.AppAuth.login(email, pass);
 
-    if (ok) {
-      btn.textContent = '✅ Thành công! Đang chuyển trang...';
-      setTimeout(() => { window.location.href = 'admin.html'; }, 500);
+    if (result.success) {
+      btn.innerHTML = '✅ Thành công! Đang chuyển trang...';
+      setTimeout(() => { window.location.href = 'admin.html'; }, 600);
     } else {
       btn.disabled = false;
-      btn.textContent = '🔐 Đăng nhập Admin';
+      btn.innerHTML = '🔐 Đăng nhập Admin';
+      errEl.textContent = result.msg || 'Sai email hoặc mật khẩu!';
       errEl.style.display = 'block';
     }
   });

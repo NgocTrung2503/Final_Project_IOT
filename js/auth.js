@@ -1,76 +1,83 @@
-// ============================================================
-//  AUTH SERVICE - Chỉ có 1 tài khoản Admin
-//  Demo: admin@iot.com / admin123
+﻿// ============================================================
+//  AUTH SERVICE - Đăng nhập qua Firebase Authentication thật
+//  Tạo tài khoản tại: Firebase Console → Authentication → Users
 // ============================================================
 
 class AuthService {
   constructor() {
     this.auth = null;
+    this._ready = false;
     this.init();
   }
 
   init() {
-    if (window.APP_CONFIG.DEMO_MODE) return;
     try {
       if (!firebase.apps.length) {
         firebase.initializeApp(window.APP_CONFIG.firebaseConfig);
       }
       this.auth = firebase.auth();
+      this._ready = true;
+      console.log("✅ Firebase Auth initialized");
     } catch (e) {
       console.warn("⚠️ Firebase Auth init failed:", e.message);
+      this._ready = true;
     }
   }
 
   // ─── Đăng nhập ───────────────────────────────────────────
   async login(email, password) {
-    if (window.APP_CONFIG.DEMO_MODE) {
-      if (email === "admin@iot.com" && password === "admin123") {
-        sessionStorage.setItem("is_admin", "true");
-        return true;
-      }
-      return false;
+    // Firebase Authentication thật
+    if (!this.auth) {
+      return { success: false, msg: "Firebase chưa khởi động, thử lại!" };
     }
     try {
-      if (!this.auth) return false;
       await this.auth.signInWithEmailAndPassword(email, password);
       sessionStorage.setItem("is_admin", "true");
-      return true;
+      return { success: true };
     } catch (e) {
-      return false;
+      // Trả về thông báo lỗi rõ ràng
+      let msg = "Đăng nhập thất bại!";
+      if (e.code === "auth/user-not-found")      msg = "Email không tồn tại trong hệ thống!";
+      if (e.code === "auth/wrong-password")       msg = "Mật khẩu không đúng!";
+      if (e.code === "auth/invalid-email")        msg = "Email không hợp lệ!";
+      if (e.code === "auth/too-many-requests")    msg = "Quá nhiều lần thử, thử lại sau!";
+      if (e.code === "auth/invalid-credential")   msg = "Sai email hoặc mật khẩu!";
+      if (e.code === "auth/network-request-failed") msg = "Lỗi mạng, kiểm tra kết nối internet!";
+      console.error("Login error:", e.code, e.message);
+      return { success: false, msg };
     }
   }
 
-  // ─── Kiểm tra đã đăng nhập chưa ─────────────────────────
+  // ─── Kiểm tra đã đăng nhập chưa ──────────────────────────
   isLoggedIn() {
-    if (window.APP_CONFIG.DEMO_MODE) {
-      return sessionStorage.getItem("is_admin") === "true";
-    }
-    return !!this.auth?.currentUser || sessionStorage.getItem("is_admin") === "true";
+    return sessionStorage.getItem("is_admin") === "true";
   }
 
-  // ─── Chặn trang Admin — redirect về login nếu chưa đăng nhập
+  // ─── Chặn trang Admin ────────────────────────────────────
   requireAdmin() {
-    if (window.APP_CONFIG.DEMO_MODE) {
-      if (!this.isLoggedIn()) {
+    // Kiểm tra sessionStorage trước (sync, không chờ Firebase)
+    if (!sessionStorage.getItem("is_admin")) {
+      // Chờ Firebase xác nhận
+      if (!this.auth) {
         window.location.href = "login.html";
+        return;
       }
-      return;
+      // Dùng onAuthStateChanged để kiểm tra Firebase session
+      this.auth.onAuthStateChanged((user) => {
+        if (!user) {
+          window.location.href = "login.html";
+        } else {
+          // Cập nhật sessionStorage nếu Firebase vẫn còn session
+          sessionStorage.setItem("is_admin", "true");
+        }
+      });
     }
-    if (!this.auth) {
-      if (!this.isLoggedIn()) window.location.href = "login.html";
-      return;
-    }
-    this.auth.onAuthStateChanged((user) => {
-      if (!user && !this.isLoggedIn()) {
-        window.location.href = "login.html";
-      }
-    });
   }
 
   // ─── Đăng xuất ───────────────────────────────────────────
   logout() {
     sessionStorage.removeItem("is_admin");
-    if (!window.APP_CONFIG.DEMO_MODE && this.auth) {
+    if (this.auth) {
       this.auth.signOut();
     }
     window.location.href = "login.html";

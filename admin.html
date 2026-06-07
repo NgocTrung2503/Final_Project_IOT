@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Panel | Public Transport Tracker</title>
-  <meta name="description" content="Quản trị hệ thống theo dõi giao thông công cộng" />
+  <title>Admin Panel | TransTrack IoT</title>
+  <meta name="description" content="Quản trị hệ thống theo dõi xe bus IoT" />
   <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body>
@@ -25,14 +25,13 @@
     <a class="nav-btn active" href="admin.html">⚙️ Admin</a>
   </nav>
   <div class="header-spacer"></div>
-  <!-- Admin badge -->
-  <div style="display:flex; align-items:center; gap:10px;">
-    <div style="display:flex; align-items:center; gap:6px; padding:5px 12px; border-radius:8px; font-size:12px; font-weight:700;
-         background:rgba(168,85,247,0.12); color:#a855f7; border:1px solid rgba(168,85,247,0.25);">
-      🔧 Admin Panel
-    </div>
-    <button class="nav-btn" style="color:var(--red)" onclick="window.AppAuth.logout()">🚪 Đăng xuất</button>
+  <!-- Firebase status -->
+  <div id="fb-status" style="display:flex; align-items:center; gap:6px; padding:5px 12px;
+       border-radius:8px; font-size:12px; font-weight:600;
+       background:rgba(168,85,247,0.12); color:#a855f7; border:1px solid rgba(168,85,247,0.25);">
+    🔧 Admin Panel
   </div>
+  <button class="nav-btn" style="color:var(--red); margin-left:8px" onclick="window.AppAuth.logout()">🚪 Đăng xuất</button>
   <div class="header-sep"></div>
   <div id="clock">--:--:--</div>
 </header>
@@ -40,34 +39,24 @@
 <main style="overflow-y:auto; height:calc(100vh - 58px);">
 <div id="admin">
 
-  <!-- Left Column: Settings & Simulator -->
+  <!-- Cột trái: Form thêm xe + Công cụ -->
   <div class="admin-col">
 
-    <!-- Simulator Control -->
+    <!-- Thống kê nhanh Firebase -->
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">🎮 Simulator Control (Demo Mode)</div>
+        <div class="panel-title">📡 Trạng thái Firebase Realtime</div>
       </div>
       <div class="panel-body">
-        <div class="sim-controls">
-          <button class="btn btn-primary" id="sim-start">▶ Start</button>
-          <button class="btn btn-danger" id="sim-stop">⏹ Stop</button>
-          <select id="sim-speed" style="width:140px; margin-left:auto">
-            <option value="0.5">🐢 Chậm (0.5x)</option>
-            <option value="1" selected>🏃 Bình thường (1x)</option>
-            <option value="2">⚡ Nhanh (2x)</option>
-            <option value="5">🚀 Rất nhanh (5x)</option>
-          </select>
-        </div>
         <div class="sim-status">
-          <span class="sim-dot running" id="sim-dot"></span>
-          <span id="sim-text">Đang chạy</span>
-          <span style="margin-left:auto" id="sim-stats">...</span>
+          <span class="sim-dot running" id="fb-dot"></span>
+          <span id="fb-text">Đang kết nối...</span>
+          <span style="margin-left:auto" id="sim-stats"></span>
         </div>
       </div>
     </div>
 
-    <!-- Vehicle Form -->
+    <!-- Form Thêm / Sửa xe -->
     <div class="panel">
       <div class="panel-header">
         <div class="panel-title" id="form-title">➕ Thêm phương tiện mới</div>
@@ -78,11 +67,11 @@
           <div class="form-grid">
             <div class="form-group">
               <label>Mã (ID)</label>
-              <input type="text" id="f-id" placeholder="VD: bus_007" required />
+              <input type="text" id="f-id" placeholder="VD: bus_001" required />
             </div>
             <div class="form-group">
               <label>Tên hiển thị</label>
-              <input type="text" id="f-name" placeholder="VD: Xe 01-C" required />
+              <input type="text" id="f-name" placeholder="VD: Xe Bus IoT" required />
             </div>
             <div class="form-group">
               <label>Loại phương tiện</label>
@@ -92,7 +81,7 @@
             </div>
             <div class="form-group">
               <label>Tuyến đường</label>
-              <select id="f-route"></select>
+              <input type="text" id="f-route" placeholder="VD: Tuyến 01 - Bến Thành → Chợ Lớn" />
             </div>
             <div class="form-group">
               <label>Sức chứa (người)</label>
@@ -103,8 +92,8 @@
               <input type="number" id="f-passengers" value="0" min="0" />
             </div>
             <div class="form-group">
-              <label>Tốc độ khởi tạo (km/h)</label>
-              <input type="number" id="f-speed" value="30" min="0" />
+              <label>Tốc độ (km/h)</label>
+              <input type="number" id="f-speed" value="0" min="0" />
             </div>
             <div class="form-group">
               <label>Trạng thái</label>
@@ -115,24 +104,25 @@
               </select>
             </div>
             <div class="form-group span2" style="margin-top:10px">
-              <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center">💾 Lưu phương tiện</button>
+              <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center">
+                💾 Lưu lên Firebase
+              </button>
             </div>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- System Actions -->
+    <!-- Công cụ -->
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">🛠️ Công cụ hệ thống</div>
+        <div class="panel-title">🛠️ Công cụ</div>
       </div>
       <div class="panel-body">
-        <p style="font-size:12px; color:var(--text-secondary); margin-bottom:14px; line-height:1.5">
-          Push dữ liệu giả lập từ Simulator lên Firebase để sử dụng ứng dụng ở chế độ production thực tế.
+        <p style="font-size:12px; color:var(--text-secondary); margin-bottom:14px; line-height:1.6">
+          Xuất toàn bộ dữ liệu xe đang có trên Firebase ra file JSON.
         </p>
         <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <button class="btn btn-purple" id="btn-seed-firebase">☁️ Push Firebase</button>
           <button class="btn btn-ghost" id="btn-export">📥 Xuất JSON</button>
         </div>
       </div>
@@ -140,13 +130,13 @@
 
   </div><!-- /admin-col -->
 
-  <!-- Right Column: List & Logs -->
+  <!-- Cột phải: Danh sách xe + Logs -->
   <div class="admin-col">
 
-    <!-- Vehicle List -->
+    <!-- Danh sách xe (realtime từ Firebase) -->
     <div class="panel">
       <div class="panel-header">
-        <div class="panel-title">📋 Danh sách phương tiện</div>
+        <div class="panel-title">📋 Danh sách phương tiện (Firebase)</div>
       </div>
       <div style="overflow-x:auto; padding-bottom:12px">
         <table class="vt-table">
@@ -155,7 +145,7 @@
               <th>ID</th>
               <th>Loại</th>
               <th>Tuyến</th>
-              <th>Vị trí (Mô phỏng)</th>
+              <th>Vị trí GPS</th>
               <th>km/h</th>
               <th>Tải</th>
               <th>TT</th>
@@ -163,7 +153,9 @@
             </tr>
           </thead>
           <tbody id="vehicle-tbody">
-            <!-- Render by JS -->
+            <tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">
+              📡 Đang kết nối Firebase...
+            </td></tr>
           </tbody>
         </table>
       </div>
@@ -189,12 +181,12 @@
 <!-- Scripts -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="js/firebase-config.js"></script>
-<script src="js/auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="js/firebase-config.js" charset="UTF-8"></script>
+<script src="js/auth.js" charset="UTF-8"></script>
 <script>window.AppAuth.requireAdmin();</script>
-<script src="js/demo-data.js"></script>
-<script src="js/firebase-service.js"></script>
-<script src="js/admin.js"></script>
+<script src="js/routes-config.js" charset="UTF-8"></script>
+<script src="js/admin.js" charset="UTF-8"></script>
 
 </body>
 </html>

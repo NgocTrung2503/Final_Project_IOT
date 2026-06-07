@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    MAIN CSS - Public Transport Tracker
    Dark theme, glassmorphism, modern design
    ============================================================ */
@@ -159,7 +159,6 @@ html, body {
 }
 .conn-dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s ease infinite; }
 .conn-dot.disconnected { background: var(--red); }
-.conn-dot.demo         { background: var(--orange); animation: blink 2s ease infinite; }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
@@ -486,6 +485,10 @@ html, body {
   transition: transform 0.2s ease;
 }
 .stop-marker:hover { transform: scale(1.5); }
+.auto-stop-marker {
+  box-shadow: 0 0 14px rgba(245,158,11,0.55);
+  outline: 2px solid rgba(255,255,255,0.12);
+}
 
 /* ─── Leaflet Popup Overrides ────────────────────────────── */
 .leaflet-popup-content-wrapper {
@@ -700,17 +703,143 @@ html, body {
 
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
-  :root { --sidebar-w: 100vw; }
+  :root {
+    --sidebar-w: 100vw;
+    --header-h: 56px;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #header {
+    padding: 0 10px;
+    gap: 8px;
+  }
 
   #sidebar {
     position: absolute;
-    left: 0; top: var(--header-h);
-    height: calc(100vh - var(--header-h));
-    z-index: 500;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    height: min(72vh, 560px);
     width: 100vw;
+    z-index: 700;
+    border-right: 0;
+    border-top: 1px solid var(--border-light);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 36px rgba(0,0,0,0.55);
   }
-  #sidebar.collapsed { width: 0; }
+
+  #sidebar.collapsed {
+    width: 100vw;
+    height: 0;
+    opacity: 0;
+    transform: translateY(16px);
+  }
 
   .logo-sub, .header-sep, .header-nav, #clock { display: none; }
   .header-logo .logo-text { font-size: 14px; }
+
+  .logo-icon,
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .conn-status {
+    max-width: 120px;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  #conn-text {
+    max-width: 86px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  #map-wrap,
+  #map {
+    min-height: calc(100vh - var(--header-h));
+  }
+
+  #ir-widget {
+    top: auto !important;
+    right: 10px !important;
+    bottom: 84px !important;
+    left: 10px !important;
+    min-width: 0 !important;
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
+  }
+
+  .map-controls {
+    right: 10px;
+    bottom: 20px;
+  }
+
+  .map-fire-alert {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    min-width: 0;
+    max-width: none;
+    padding: 10px 12px;
+  }
+
+  .map-fire-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+  }
+
+  .vehicle-popup {
+    min-width: 0;
+    width: min(292px, calc(100vw - 44px));
+  }
+
+  .vp-header,
+  .vp-body {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .vp-row {
+    align-items: flex-start;
+  }
+
+  .vp-label {
+    flex: 0 0 42%;
+  }
+
+  .vp-val {
+    max-width: 58%;
+    overflow-wrap: anywhere;
+  }
+
+  .leaflet-popup {
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  #map-wrap > div[style*="bottom:40px"] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .header-logo .logo-text {
+    display: none;
+  }
+
+  .conn-status {
+    display: none;
+  }
+
+  #ir-widget {
+    bottom: 72px !important;
+  }
 }
