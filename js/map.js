@@ -78,6 +78,96 @@ document.addEventListener("DOMContentLoaded", () => {
   let routeStops = [];
   let autoStops = [];
   let latestVehicles = [];
+  const baseRoutes = window.BUS_ROUTES || [];
+  const virtualBuses = window.VIRTUAL_BUSES || [];
+  const realtimeVehicleId = window.REALTIME_VEHICLE_ID || "bus_001";
+
+  function mergeRoutes(firebaseRoutes = []) {
+    const merged = new Map();
+    baseRoutes.forEach(route => merged.set(route.id, route));
+    firebaseRoutes.forEach(route => merged.set(route.id, route));
+    return [...merged.values()];
+  }
+
+  function isRouteInService(route, now = new Date()) {
+    const schedule = route?.schedule || [];
+    if (!schedule.length) return true;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minutes = schedule
+      .map(t => {
+        const [h, m] = String(t).split(":").map(Number);
+        return h * 60 + m;
+      })
+      .filter(Number.isFinite);
+    if (!minutes.length) return true;
+    return nowMin >= Math.min(...minutes) && nowMin <= Math.max(...minutes);
+  }
+
+  function pointOnRoute(route, busIndex = 0) {
+    const path = Array.isArray(route?.path) && route.path.length >= 2 ? route.path : route?.stops;
+    if (!Array.isArray(path) || path.length < 2) return null;
+
+    const travelSeconds = 18;
+    const dwellSeconds = 5 + (busIndex % 3) * 2;
+    const elapsed = (Date.now() / 1000 + busIndex * 7) % ((travelSeconds * 2) + (dwellSeconds * 2));
+    let t;
+
+    if (elapsed < travelSeconds) {
+      t = elapsed / travelSeconds;
+    } else if (elapsed < travelSeconds + dwellSeconds) {
+      t = 1;
+    } else if (elapsed < travelSeconds * 2 + dwellSeconds) {
+      t = 1 - ((elapsed - travelSeconds - dwellSeconds) / travelSeconds);
+    } else {
+      t = 0;
+    }
+
+    const scaled = t * (path.length - 1);
+    const index = Math.min(path.length - 2, Math.floor(scaled));
+    const local = scaled - index;
+    const a = path[index];
+    const b = path[index + 1];
+    const lat = Number(a.lat) + (Number(b.lat) - Number(a.lat)) * local;
+    const lng = Number(a.lng) + (Number(b.lng) - Number(a.lng)) * local;
+
+    return {
+      lat,
+      lng,
+      currentStop: route.stops?.[index]?.name || a.name,
+      nextStop: route.stops?.[index + 1]?.name || b.name,
+    };
+  }
+
+  function materializeVirtualBus(bus, index) {
+    const route = activeRoutes.find(r => r.id === bus.routeId) || baseRoutes.find(r => r.id === bus.routeId);
+    if (!isRouteInService(route)) return null;
+
+    const movingPoint = pointOnRoute(route, index);
+    const wave = Math.round(Math.sin(Date.now() / 12000 + index) * 2);
+    const irIn = Number(bus.irIn || bus.passengers || 0) + Math.max(0, wave);
+    const irOut = Number(bus.irOut || 0) + Math.max(0, -wave);
+    const passengers = Math.max(0, irIn - irOut);
+
+    return {
+      ...bus,
+      ...(movingPoint || {}),
+      irIn,
+      irOut,
+      passengers,
+      lastUpdated: Date.now(),
+    };
+  }
+
+  function buildVehicleFleet(firebaseVehicles = []) {
+    const realtimeVehicles = firebaseVehicles
+      .filter(v => v.id === realtimeVehicleId)
+      .map(v => ({
+        ...v,
+        isRealtime: true,
+      }));
+
+    return [...realtimeVehicles, ...virtualBuses.map(materializeVirtualBus).filter(Boolean)];
+  }
 
   function enrichVehiclesWithRoutes(vehicles) {
     return vehicles.map(v => {
@@ -306,10 +396,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let irCountIn = 0;
   let irCountOut = 0;
+  let selectedIrVehicleId = null;
+  const lastPassengersByVehicle = {};
   const irDot = document.getElementById("ir-dot");
   const irTotal = document.getElementById("ir-total");
   const irCountInEl = document.getElementById("ir-count-in");
   const irCountOutEl = document.getElementById("ir-count-out");
+  const irCapacityEl = document.getElementById("ir-capacity");
   const irBar = document.getElementById("ir-bar");
   const irPct = document.getElementById("ir-pct");
 
@@ -318,6 +411,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const cap = capacity || 80;
     const pct = Math.min(100, Math.round((passengers / cap) * 100));
     irTotal.textContent = passengers;
+    if (irCapacityEl) irCapacityEl.textContent = `/${cap}`;
     if (irBar) {
       irBar.style.width = pct + "%";
       irBar.style.background = pct > 80 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
@@ -327,44 +421,46 @@ document.addEventListener("DOMContentLoaded", () => {
     if (irPct) irPct.textContent = pct + "% sức chứa";
   }
 
-  // Simulate IR event: flash dot when passenger count changes
-  let lastPassengers = -1;
-  document.addEventListener("vehicles-updated", e => {
-    const bus = e.detail.find(v => v.type === "bus");
-    if (!bus) return;
-    const cur = bus.passengers || 0;
-    if (Number.isFinite(Number(bus.irIn))) {
-      irCountIn = Number(bus.irIn);
-      if (irCountInEl) irCountInEl.textContent = irCountIn;
-    }
-    if (Number.isFinite(Number(bus.irOut))) {
-      irCountOut = Number(bus.irOut);
-      if (irCountOutEl) irCountOutEl.textContent = irCountOut;
-    }
-    if (lastPassengers !== -1 && cur !== lastPassengers) {
-      const diff = cur - lastPassengers;
+  function setIrVehicle(vehicle, flashChanges = false) {
+    if (!vehicle) return;
+    selectedIrVehicleId = vehicle.id;
+
+    const cur = Number(vehicle.passengers || 0);
+    irCountIn = Number.isFinite(Number(vehicle.irIn)) ? Number(vehicle.irIn) : Math.max(irCountIn, cur);
+    irCountOut = Number.isFinite(Number(vehicle.irOut)) ? Number(vehicle.irOut) : Math.max(0, irCountIn - cur);
+
+    if (irCountInEl) irCountInEl.textContent = irCountIn;
+    if (irCountOutEl) irCountOutEl.textContent = irCountOut;
+
+    const prev = lastPassengersByVehicle[vehicle.id];
+    if (flashChanges && prev != null && cur !== prev) {
+      const diff = cur - prev;
       if (diff > 0) {
-        if (!Number.isFinite(Number(bus.irIn))) {
-          irCountIn += diff;
-          if (irCountInEl) irCountInEl.textContent = irCountIn;
-        }
-        // Flash green
+        if (irCountInEl) irCountInEl.textContent = irCountIn;
         if (irDot) { irDot.style.background = "#22c55e"; irDot.style.boxShadow = "0 0 12px #22c55e"; }
       } else {
-        if (!Number.isFinite(Number(bus.irOut))) {
-          irCountOut += Math.abs(diff);
-          if (irCountOutEl) irCountOutEl.textContent = irCountOut;
-        }
-        // Flash red
+        if (irCountOutEl) irCountOutEl.textContent = irCountOut;
         if (irDot) { irDot.style.background = "#ef4444"; irDot.style.boxShadow = "0 0 12px #ef4444"; }
       }
-      // Restore dot after 800ms
       setTimeout(() => {
         if (irDot) { irDot.style.background = "#22c55e"; irDot.style.boxShadow = "0 0 6px #22c55e"; }
       }, 800);
     }
-    lastPassengers = cur;
-    updateIrWidget(cur, bus.capacity);
+
+    lastPassengersByVehicle[vehicle.id] = cur;
+    updateIrWidget(cur, vehicle.capacity);
+  }
+
+  vehicleMgr.onSelectCallback = (vehicle) => {
+    setIrVehicle(vehicle, false);
+    renderVehicleList(vehicleMgr.getAllData());
+  };
+
+  document.addEventListener("vehicles-updated", e => {
+    const vehicles = e.detail || [];
+    const selected = vehicles.find(v => v.id === selectedIrVehicleId);
+    const fallback = vehicles.find(v => v.type === "bus" && !v.isVirtual) || vehicles.find(v => v.type === "bus");
+    setIrVehicle(selected || fallback, true);
   });
 
   // â”€â”€â”€ Filter Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -475,7 +571,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Initial routes and nearest stops with default center
-  setRoutes(window.BUS_ROUTES || []);
+  setRoutes(baseRoutes);
 
   let shouldOpenUserPopup = false;
 
@@ -524,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       fbService.onRoutesUpdate((routes) => {
-        setRoutes(routes, false);
+        setRoutes(mergeRoutes(routes));
         if (latestVehicles.length) {
           vehicleMgr.update(enrichVehiclesWithRoutes(latestVehicles));
         }
@@ -538,23 +634,27 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       fbService.onVehicleHistoryUpdate((historyByVehicle) => {
-        vehicleMgr.loadPersistedHistory(historyByVehicle);
+        vehicleMgr.loadPersistedHistory({
+          [realtimeVehicleId]: historyByVehicle?.[realtimeVehicleId] || [],
+        });
         renderRouteToggles(activeRoutes);
       });
 
       fbService.onAutoStopsUpdate((stopsByVehicle) => {
-        vehicleMgr.loadPersistedAutoStops(stopsByVehicle);
+        vehicleMgr.loadPersistedAutoStops({
+          [realtimeVehicleId]: stopsByVehicle?.[realtimeVehicleId] || [],
+        });
         if (latestVehicles.length) {
           vehicleMgr.update(enrichVehiclesWithRoutes(latestVehicles));
         }
       });
 
       fbService.onVehiclesUpdate((vehicles) => {
-        latestVehicles = vehicles;
-        const enrichedVehicles = enrichVehiclesWithRoutes(vehicles);
+        latestVehicles = buildVehicleFleet(vehicles);
+        const enrichedVehicles = enrichVehiclesWithRoutes(latestVehicles);
         vehicleMgr.update(enrichedVehicles);
 
-        if (vehicles.length === 0) {
+        if (latestVehicles.length === 0) {
           // Firebase rá»—ng â€” hiá»‡n tráº¡ng thÃ¡i chá»
           listEl.innerHTML = `
             <div style="padding:24px 16px; text-align:center;">
@@ -574,6 +674,11 @@ document.addEventListener("DOMContentLoaded", () => {
           if (irWidget) irWidget.style.opacity = "1";
         }
       });
+
+      setInterval(() => {
+        latestVehicles = buildVehicleFleet(latestVehicles.filter(v => !v.isVirtual));
+        vehicleMgr.update(enrichVehiclesWithRoutes(latestVehicles));
+      }, 1000);
     } catch (e) {
       console.error("Firebase error:", e);
       connDot.className = "conn-dot disconnected";

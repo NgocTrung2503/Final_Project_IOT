@@ -22,6 +22,56 @@ class RouteManager {
     });
   }
 
+  _normalizeRoutePath(route) {
+    const source = route.path || route.trail || route.geometry || route.coords || [];
+    const list = Array.isArray(source) ? source : Object.values(source || {});
+    const coords = list
+      .map(p => Array.isArray(p)
+        ? [Number(p[0]), Number(p[1])]
+        : [Number(p.lat ?? p.latitude), Number(p.lng ?? p.lon ?? p.longitude)]
+      )
+      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    if (
+      coords.length > 2 &&
+      first &&
+      last &&
+      this.map.distance(L.latLng(first[0], first[1]), L.latLng(last[0], last[1])) < 10
+    ) {
+      coords.pop();
+    }
+
+    return coords;
+  }
+
+  _splitRouteSegments(coords, stops) {
+    if (!coords.length) return [];
+
+    const firstStop = stops[0]
+      ? L.latLng(Number(stops[0].lat), Number(stops[0].lng))
+      : null;
+    const segments = [[coords[0]]];
+
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1];
+      const current = coords[i];
+      const prevLatLng = L.latLng(prev[0], prev[1]);
+      const currentLatLng = L.latLng(current[0], current[1]);
+      const jumpDistance = this.map.distance(prevLatLng, currentLatLng);
+      const returnsToFirstStop = firstStop && this.map.distance(currentLatLng, firstStop) < 80;
+
+      if (i > 1 && returnsToFirstStop && jumpDistance > 500) {
+        continue;
+      }
+
+      segments[segments.length - 1].push(current);
+    }
+
+    return segments.filter(segment => segment.length >= 2);
+  }
+
   // ─── Draw a route ─────────────────────────────────────────
 
   drawRoute(route) {
@@ -34,24 +84,25 @@ class RouteManager {
 
     const color = route.color || "#00d4ff";
     const group = L.layerGroup();
-    const coords = stops.map(s => [Number(s.lat), Number(s.lng)]);
+    const coords = this._normalizeRoutePath(route);
+    const segments = this._splitRouteSegments(coords, stops);
 
-    // Outer glow line
-    L.polyline(coords, {
-      color,
-      weight: 6,
-      opacity: 0.25,
-      lineJoin: "round",
-    }).addTo(group);
+    segments.forEach(segment => {
+      L.polyline(segment, {
+        color,
+        weight: 6,
+        opacity: 0.25,
+        lineJoin: "round",
+      }).addTo(group);
 
-    // Main line
-    L.polyline(coords, {
-      color,
-      weight: 3,
-      opacity: 0.9,
-      lineJoin: "round",
-      dashArray: route.type === "metro" ? null : "8 4",
-    }).addTo(group);
+      L.polyline(segment, {
+        color,
+        weight: 3,
+        opacity: 0.9,
+        lineJoin: "round",
+        dashArray: route.type === "metro" ? null : "8 4",
+      }).addTo(group);
+    });
 
     // Direction arrows using decorators-like pattern (CSS approach)
     const stopMarkers = [];

@@ -34,6 +34,20 @@ class FirebaseService {
     return Array.isArray(schedule) ? schedule : Object.values(schedule);
   }
 
+  _normalizeRoutePath(path) {
+    if (!path) return [];
+    const list = Array.isArray(path) ? path : Object.values(path);
+    return list
+      .map(p => Array.isArray(p)
+        ? { lat: Number(p[0]), lng: Number(p[1]) }
+        : {
+            lat: Number(p.lat ?? p.latitude),
+            lng: Number(p.lng ?? p.lon ?? p.longitude),
+          }
+      )
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  }
+
   _normalizeKnownAreas(data) {
     if (!data) return [];
     const list = Array.isArray(data) ? data : Object.entries(data).map(([id, area]) => ({ id, ...area }));
@@ -76,8 +90,7 @@ class FirebaseService {
             createdAt: Number.isFinite(createdAt) ? createdAt : index + 1,
           };
         })
-        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-        .sort((a, b) => a.createdAt - b.createdAt);
+        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
       return [vehicleId, list];
     }));
   }
@@ -194,6 +207,7 @@ class FirebaseService {
           type: r.type || "bus",
           color: r.color || "#00d4ff",
           stops: this._normalizeStops(r.stops),
+          path: this._normalizeRoutePath(r.path || r.trail || r.geometry || r.coords),
           schedule: this._normalizeSchedule(r.schedule),
         }));
         callback(routes);
@@ -239,9 +253,14 @@ class FirebaseService {
             const createdAt = Number(p.createdAt ?? p.timestamp ?? id);
             return {
               passengers: Number(p.passengers || 0),
+              irIn:       Number(p.irIn || 0),
+              irOut:      Number(p.irOut || 0),
+              capacity:   Number(p.capacity || 80),
               speed:      Number(p.speed || 0),
               lat:        Number(p.lat || 0),
               lng:        Number(p.lng || 0),
+              routeId:    p.routeId || "",
+              name:       p.name || vehicleId,
               createdAt:  Number.isFinite(createdAt) ? createdAt : 0,
             };
           })
@@ -277,10 +296,20 @@ class FirebaseService {
     const timeStr = t.toLocaleTimeString("vi-VN", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
 
     await this.db.ref(`vehicleHistory/${vehicle.id}/${createdAt}`).set({
+      vehicleId: vehicle.id,
+      name: vehicle.name || vehicle.id,
+      type: vehicle.type || "bus",
+      routeId: vehicle.routeId || "",
       lat,
       lng,
       speed: Number(vehicle.speed || 0),
+      irIn: Number(vehicle.irIn || 0),
+      irOut: Number(vehicle.irOut || 0),
       passengers: Number(vehicle.passengers || 0),
+      capacity: Number(vehicle.capacity || 80),
+      currentStop: vehicle.currentStop || "",
+      nextStop: vehicle.nextStop || "",
+      isVirtual: vehicle.isVirtual === true,
       mq2Alert: vehicle.fireAlert === true || vehicle.mq2Alert === true || vehicle.mq2Alert === "true",
       date: dateStr,
       time: timeStr,

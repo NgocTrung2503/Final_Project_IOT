@@ -8,6 +8,7 @@ class VehicleManager {
     this.map = map;
     this.markers = {};       // vehicleId â†’ L.marker
     this.prevPositions = {}; // vehicleId â†’ {lat, lng}
+    this.markerAnimations = {};
     this.pathHistory = {};
     this.trailLayers = {};
     this.trailSegmentLayers = {};
@@ -356,7 +357,6 @@ class VehicleManager {
           createdAt: Number(p.createdAt || index + 1),
         }))
         .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-        .sort((a, b) => a.createdAt - b.createdAt)
         .filter(p => {
           const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
           if (seen.has(key)) return false;
@@ -375,15 +375,7 @@ class VehicleManager {
         });
       }
 
-      const segments = [];
-      normalized.forEach(point => {
-        const current = segments[segments.length - 1];
-        if (!current) {
-          segments.push([point]);
-        } else {
-          current.push(point);
-        }
-      });
+      const segments = normalized.length >= 2 ? [normalized] : [];
 
       this.trailSegmentLayers[vehicleId] = segments
         .filter(segment => segment.length >= 2)
@@ -649,37 +641,18 @@ class VehicleManager {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
     const id = vehicle.id;
-    const firebasePath = this._normalizePath(vehicle.path || vehicle.trail || vehicle.history);
-    if (firebasePath.length) {
-      this.pathHistory[id] = firebasePath;
-    } else {
-      if (!this.pathHistory[id]) this.pathHistory[id] = [];
-      const points = this.pathHistory[id];
-      const last = points[points.length - 1];
-      const hasCurrentPoint = points.some(([pLat, pLng]) =>
-        Math.abs(pLat - lat) < 0.000001 && Math.abs(pLng - lng) < 0.000001
-      );
-
-      if (!hasCurrentPoint && (!last || this.map.distance(L.latLng(last[0], last[1]), L.latLng(lat, lng)) >= 5)) {
-        points.push([lat, lng]);
-        if (this.persistHistoryPoint) this.persistHistoryPoint(vehicle);
-      }
-
-      while (points.length > 5000) points.shift();
-    }
-
     this._ensureAutoStops(vehicle, lat, lng);
 
-    const points = this.pathHistory[id];
+    const points = this.pathHistory[id] || [];
     if (!points || points.length < 2) return;
 
     const color = vehicle.routeColor || "#00d4ff";
     if (this.trailSegmentLayers[id]?.length) {
       this.trailSegmentLayers[id].forEach(layer => {
-        if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+        layer.setStyle({ color });
+        if (!this.map.hasLayer(layer)) layer.addTo(this.map);
       });
-      delete this.trailSegmentLayers[id];
-      this.trailLayers[id] = null;
+      return;
     }
 
     if (!this.trailLayers[id]) {
@@ -784,12 +757,14 @@ class VehicleManager {
       seen.add(v.id);
 
       const visible = this.filterType === "all" || this.filterType === v.type;
-      this._updateLiveTrail(v);
-      Object.assign(v, this._getAutoStopInfo(v.id, v));
+      if (!v.isVirtual) {
+        this._updateLiveTrail(v);
+        Object.assign(v, this._getAutoStopInfo(v.id, v));
+      }
 
       if (this.markers[v.id]) {
         // Animate movement
-        this._animateMarker(v.id, v.lat, v.lng);
+        this._animateMarker(v.id, v.lat, v.lng, v.isVirtual ? 1100 : 900);
         this.markers[v.id].setIcon(this.createIcon(v));
         this.markers[v.id]._vehicleData = v;
 
@@ -809,10 +784,7 @@ class VehicleManager {
           maxWidth: 300,
           className: "custom-popup",
         });
-        marker.on("click", () => {
-          this.selectedId = v.id;
-          if (this.onSelectCallback) this.onSelectCallback(v);
-        });
+        marker.on("click", () => this.selectVehicle(v.id));
 
         if (visible) marker.addTo(this.map);
         this.markers[v.id] = marker;
@@ -824,6 +796,10 @@ class VehicleManager {
     // Remove stale markers
     Object.keys(this.markers).forEach(id => {
       if (!seen.has(id)) {
+        if (this.markerAnimations[id]) {
+          cancelAnimationFrame(this.markerAnimations[id]);
+          delete this.markerAnimations[id];
+        }
         if (this.map.hasLayer(this.markers[id])) this.map.removeLayer(this.markers[id]);
         delete this.markers[id];
         delete this.prevPositions[id];
@@ -852,22 +828,36 @@ class VehicleManager {
     document.dispatchEvent(new CustomEvent("vehicles-updated", { detail: vehicles }));
   }
 
-  _animateMarker(id, targetLat, targetLng) {
+  _animateMarker(id, targetLat, targetLng, duration = 900) {
     const marker = this.markers[id];
     if (!marker) return;
-    const current = marker.getLatLng();
-    const frames = 20;
-    let frame = 0;
-    const dLat = (targetLat - current.lat) / frames;
-    const dLng = (targetLng - current.lng) / frames;
 
-    const step = () => {
-      if (frame >= frames) return;
-      marker.setLatLng([current.lat + dLat * frame, current.lng + dLng * frame]);
-      frame++;
-      requestAnimationFrame(step);
+    if (this.markerAnimations[id]) {
+      cancelAnimationFrame(this.markerAnimations[id]);
+      delete this.markerAnimations[id];
+    }
+
+    const start = marker.getLatLng();
+    const endLat = Number(targetLat);
+    const endLng = Number(targetLng);
+    const startTime = performance.now();
+
+    const step = now => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      marker.setLatLng([
+        start.lat + (endLat - start.lat) * progress,
+        start.lng + (endLng - start.lng) * progress,
+      ]);
+
+      if (progress < 1) {
+        this.markerAnimations[id] = requestAnimationFrame(step);
+      } else {
+        marker.setLatLng([endLat, endLng]);
+        delete this.markerAnimations[id];
+      }
     };
-    requestAnimationFrame(step);
+
+    this.markerAnimations[id] = requestAnimationFrame(step);
   }
 
   setFilter(type) {
@@ -895,8 +885,16 @@ class VehicleManager {
   focusVehicle(id) {
     const m = this.markers[id];
     if (!m) return;
+    this.selectVehicle(id);
     this.map.flyTo(m.getLatLng(), 16, { animate: true, duration: 1 });
     m.openPopup();
+  }
+
+  selectVehicle(id) {
+    const marker = this.markers[id];
+    if (!marker?._vehicleData) return;
+    this.selectedId = id;
+    if (this.onSelectCallback) this.onSelectCallback(marker._vehicleData);
   }
 
   getAllData() {
