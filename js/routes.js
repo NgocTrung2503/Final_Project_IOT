@@ -90,17 +90,17 @@ class RouteManager {
     segments.forEach(segment => {
       L.polyline(segment, {
         color,
-        weight: 6,
-        opacity: 0.25,
+        weight: 8,
+        opacity: 0.38,
         lineJoin: "round",
       }).addTo(group);
 
       L.polyline(segment, {
         color,
-        weight: 3,
-        opacity: 0.9,
+        weight: 4,
+        opacity: 0.98,
         lineJoin: "round",
-        dashArray: route.type === "metro" ? null : "8 4",
+        dashArray: route.type === "metro" ? null : "10 5",
       }).addTo(group);
     });
 

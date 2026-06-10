@@ -16,13 +16,107 @@ class FirebaseService {
     return value === true || value === 1 || value === "1" || value === "true" || value === "alert";
   }
 
+  _fixText(value) {
+    let text = String(value ?? "");
+    const score = s => (s.match(/[\u00c2\u00c3\u00c4\u00e1\u00e2\u00f0]/g) || []).length;
+    const decodeOnce = s => {
+      if (!/[\u00c2\u00c3\u00c4\u00e1\u00e2\u00f0]/.test(s) || typeof TextDecoder === "undefined") return s;
+      const bytes = [];
+      const cp1252 = {
+        0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84,
+        0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88,
+        0x2030: 0x89, 0x0160: 0x8a, 0x2039: 0x8b, 0x0152: 0x8c,
+        0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93,
+        0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+        0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b,
+        0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f,
+      };
+      for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code <= 255) bytes.push(code);
+        else if (cp1252[code]) bytes.push(cp1252[code]);
+        else return s;
+      }
+      try {
+        return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+      } catch (_) {
+        return s;
+      }
+    };
+
+    for (let i = 0; i < 2; i++) {
+      const decoded = decodeOnce(text);
+      if (decoded === text || score(decoded) > score(text)) break;
+      text = decoded;
+    }
+
+    return text
+      .replaceAll("Tr\u00e1\u00ba\u00a1m", "Trạm")
+      .replaceAll("tr\u00e1\u00ba\u00a1m", "trạm")
+      .replaceAll("ThÃ¡nh GiÃ³ng", "Thánh Gióng")
+      .replaceAll("Th�nh Gi�ng", "Thánh Gióng")
+      .replaceAll("Th�nh Giọng", "Thánh Gióng")
+      .replaceAll("Ä", "Đ")
+      .replaceAll("Ä‘", "đ")
+      .replaceAll("â€“", "-")
+      .replaceAll("â€”", "-")
+      .replace(/^(Trạm\s+)+/i, "Trạm ")
+      .trim();
+  }
+
+  _isValidGpsPoint(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+  }
+
+  _isZeroGpsPoint(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat === 0 && lng === 0;
+  }
+
+  _resolveVehicleCoords(v) {
+    const lat = Number(v?.lat ?? v?.latitude);
+    const lng = Number(v?.lng ?? v?.lon ?? v?.longitude);
+    if (this._isValidGpsPoint(lat, lng)) {
+      return { lat, lng, gpsValid: true };
+    }
+
+    const fallbackLat = Number(v?.lastValidLat ?? v?.prevLat);
+    const fallbackLng = Number(v?.lastValidLng ?? v?.prevLng);
+    if (this._isValidGpsPoint(fallbackLat, fallbackLng)) {
+      return { lat: fallbackLat, lng: fallbackLng, gpsValid: false };
+    }
+
+    return { lat, lng, gpsValid: false };
+  }
+
+  _normalizeVehicle(id, v) {
+    const { lat, lng, gpsValid } = this._resolveVehicleCoords(v);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    return {
+      id,
+      ...v,
+      lat,
+      lng,
+      gpsValid,
+      name:       v.name      || `Xe ${id}`,
+      type:       v.type      || "bus",
+      status:     v.status    || "on_time",
+      irIn:       Number(v.irIn ?? v.passengerIn ?? v.inCount ?? 0),
+      irOut:      Number(v.irOut ?? v.passengerOut ?? v.outCount ?? 0),
+      passengers: v.passengers != null ? Number(v.passengers) : Math.max(0, Number(v.irIn ?? v.passengerIn ?? v.inCount ?? 0) - Number(v.irOut ?? v.passengerOut ?? v.outCount ?? 0)),
+      capacity:   v.capacity  || 80,
+      speed:      (v.speed && v.speed < 5) ? 0 : (v.speed || 0),
+      fireAlert:  this._toBool(v.fireAlert ?? v.fire ?? v.mq2Alert ?? v.smokeAlert ?? v.gasAlert ?? v.mq2Status),
+    };
+  }
+
   _normalizeStops(stops) {
     if (!stops) return [];
     const list = Array.isArray(stops) ? stops : Object.values(stops);
     return list
       .map((s, index) => ({
         id: s.id || `stop_${index + 1}`,
-        name: s.name || `Stop ${index + 1}`,
+        name: this._fixText(s.name || `Stop ${index + 1}`),
         lat: Number(s.lat ?? s.latitude),
         lng: Number(s.lng ?? s.lon ?? s.longitude),
       }))
@@ -63,7 +157,7 @@ class FirebaseService {
 
         return {
           id: area.id || `known_area_${index + 1}`,
-          name: area.name,
+          name: this._fixText(area.name),
           polygon,
           priority: Number(area.priority || 90),
         };
@@ -83,14 +177,21 @@ class FirebaseService {
           const createdAt = Number(p.createdAt ?? p.timestamp ?? id ?? index + 1);
           return {
             id: p.id || id || `point_${index + 1}`,
+            name: this._fixText(p.name || vehicleId),
+            routeId: p.routeId || "",
             lat: Number(p.lat ?? p.latitude),
             lng: Number(p.lng ?? p.lon ?? p.longitude),
             speed: Number(p.speed || 0),
+            irIn: Number(p.irIn || 0),
+            irOut: Number(p.irOut || 0),
             passengers: Number(p.passengers || 0),
+            capacity: Number(p.capacity || 80),
+            currentStop: this._fixText(p.currentStop || ""),
+            nextStop: this._fixText(p.nextStop || ""),
             createdAt: Number.isFinite(createdAt) ? createdAt : index + 1,
           };
         })
-        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+        .filter(p => this._isValidGpsPoint(p.lat, p.lng));
       return [vehicleId, list];
     }));
   }
@@ -101,13 +202,13 @@ class FirebaseService {
       const list = (Array.isArray(stops) ? stops : Object.entries(stops || {}).map(([id, s]) => ({ id, ...s })))
         .map((s, index) => ({
           id: s.id || `stop_${index + 1}`,
-          name: s.name || "Trạm GPS",
-          baseName: s.baseName || s.name || "Trạm GPS",
+          name: this._fixText(s.name || "Trạm GPS"),
+          baseName: this._fixText(s.baseName || s.name || "Trạm GPS"),
           lat: Number(s.lat ?? s.latitude),
           lng: Number(s.lng ?? s.lon ?? s.longitude),
           createdAt: Number(s.createdAt || 0),
         }))
-        .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng))
+        .filter(s => this._isValidGpsPoint(s.lat, s.lng))
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       return [vehicleId, list];
     }));
@@ -145,20 +246,10 @@ class FirebaseService {
       const data = snap.val();
       if (data && typeof data === "object") {
         // Có dữ liệu → chuyển object thành mảng
-        const vehicles = Object.entries(data).map(([id, v]) => ({
-          id,
-          ...v,
+        const vehicles = Object.entries(data)
+          .map(([id, v]) => this._normalizeVehicle(id, v))
+          .filter(Boolean);
           // Đảm bảo có các field tối thiểu
-          name:       v.name      || `Xe ${id}`,
-          type:       v.type      || "bus",
-          status:     v.status    || "on_time",
-          irIn:       Number(v.irIn ?? v.passengerIn ?? v.inCount ?? 0),
-          irOut:      Number(v.irOut ?? v.passengerOut ?? v.outCount ?? 0),
-          passengers: v.passengers != null ? Number(v.passengers) : Math.max(0, Number(v.irIn ?? v.passengerIn ?? v.inCount ?? 0) - Number(v.irOut ?? v.passengerOut ?? v.outCount ?? 0)),
-          capacity:   v.capacity  || 80,
-          speed:      (v.speed && v.speed < 5) ? 0 : (v.speed || 0),
-          fireAlert:  this._toBool(v.fireAlert ?? v.fire ?? v.mq2Alert ?? v.smokeAlert ?? v.gasAlert ?? v.mq2Status),
-        }));
 
         callback(vehicles);
       } else {
@@ -173,20 +264,52 @@ class FirebaseService {
   // ─── Cập nhật vị trí xe (từ ESP32 push lên) ────────────────
   async updateVehiclePosition(vehicleId, lat, lng, extraData = {}) {
     if (!this.db) return;
-    await this.db.ref(`vehicles/${vehicleId}`).update({
-      lat, lng,
+    const nextLat = Number(lat);
+    const nextLng = Number(lng);
+    const updateData = {
       lastUpdated: firebase.database.ServerValue.TIMESTAMP,
       ...extraData,
-    });
+    };
+
+    if (this._isValidGpsPoint(nextLat, nextLng)) {
+      updateData.lat = nextLat;
+      updateData.lng = nextLng;
+      updateData.lastValidLat = nextLat;
+      updateData.lastValidLng = nextLng;
+      updateData.gpsValid = true;
+    } else {
+      updateData.gpsValid = false;
+    }
+
+    await this.db.ref(`vehicles/${vehicleId}`).update(updateData);
   }
 
   // ─── Thêm / cập nhật xe ────────────────────────────────────
   async setVehicle(vehicleId, data) {
     if (!this.db) return;
-    await this.db.ref(`vehicles/${vehicleId}`).set({
+    const lat = Number(data?.lat ?? data?.latitude);
+    const lng = Number(data?.lng ?? data?.lon ?? data?.longitude);
+    const nextData = {
       ...data,
       lastUpdated: firebase.database.ServerValue.TIMESTAMP,
-    });
+    };
+
+    if (this._isValidGpsPoint(lat, lng)) {
+      nextData.lat = lat;
+      nextData.lng = lng;
+      nextData.lastValidLat = lat;
+      nextData.lastValidLng = lng;
+      nextData.gpsValid = true;
+    } else {
+      delete nextData.lat;
+      delete nextData.lng;
+      delete nextData.latitude;
+      delete nextData.longitude;
+      delete nextData.lon;
+      nextData.gpsValid = false;
+    }
+
+    await this.db.ref(`vehicles/${vehicleId}`).update(nextData);
   }
 
   // ─── Xóa xe ────────────────────────────────────────────────
@@ -203,7 +326,7 @@ class FirebaseService {
       if (data && typeof data === "object") {
         const routes = Object.entries(data).map(([id, r]) => ({
           id: r.id || id,
-          name: r.name || `Tuyen ${id}`,
+          name: this._fixText(r.name || `Tuyến ${id}`),
           type: r.type || "bus",
           color: r.color || "#00d4ff",
           stops: this._normalizeStops(r.stops),
@@ -257,14 +380,15 @@ class FirebaseService {
               irOut:      Number(p.irOut || 0),
               capacity:   Number(p.capacity || 80),
               speed:      Number(p.speed || 0),
-              lat:        Number(p.lat || 0),
-              lng:        Number(p.lng || 0),
+              lat:        Number(p.lat ?? p.latitude),
+              lng:        Number(p.lng ?? p.lon ?? p.longitude),
               routeId:    p.routeId || "",
-              name:       p.name || vehicleId,
+              name:       this._fixText(p.name || vehicleId),
               createdAt:  Number.isFinite(createdAt) ? createdAt : 0,
             };
           })
           .filter(p => p.createdAt > 0)   // chỉ cần có timestamp hợp lệ
+          .filter(p => this._isValidGpsPoint(p.lat, p.lng))
           .sort((a, b) => a.createdAt - b.createdAt);
       });
       callback(result);
@@ -283,7 +407,7 @@ class FirebaseService {
     if (!this.db || !vehicle?.id) return;
     const lat = Number(vehicle.lat);
     const lng = Number(vehicle.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if (!this._isValidGpsPoint(lat, lng)) return;
     
     // Sửa lỗi ESP32 gửi millis(): Nếu timestamp < năm 2001 (1e12), tự động dùng thời gian thực của web
     let createdAt = Number(vehicle.lastUpdated);
@@ -297,7 +421,7 @@ class FirebaseService {
 
     await this.db.ref(`vehicleHistory/${vehicle.id}/${createdAt}`).set({
       vehicleId: vehicle.id,
-      name: vehicle.name || vehicle.id,
+      name: this._fixText(vehicle.name || vehicle.id),
       type: vehicle.type || "bus",
       routeId: vehicle.routeId || "",
       lat,
@@ -307,8 +431,8 @@ class FirebaseService {
       irOut: Number(vehicle.irOut || 0),
       passengers: Number(vehicle.passengers || 0),
       capacity: Number(vehicle.capacity || 80),
-      currentStop: vehicle.currentStop || "",
-      nextStop: vehicle.nextStop || "",
+      currentStop: this._fixText(vehicle.currentStop || ""),
+      nextStop: this._fixText(vehicle.nextStop || ""),
       isVirtual: vehicle.isVirtual === true,
       mq2Alert: vehicle.fireAlert === true || vehicle.mq2Alert === true || vehicle.mq2Alert === "true",
       date: dateStr,
@@ -321,8 +445,8 @@ class FirebaseService {
     if (!this.db || !vehicleId || !stop?.id) return;
     await this.db.ref(`autoStops/${vehicleId}/${stop.id}`).set({
       id: stop.id,
-      name: stop.name || "Trạm GPS",
-      baseName: stop.baseName || stop.name || "Trạm GPS",
+      name: this._fixText(stop.name || "Trạm GPS"),
+      baseName: this._fixText(stop.baseName || stop.name || "Trạm GPS"),
       lat: Number(stop.lat),
       lng: Number(stop.lng),
       createdAt: Number(stop.createdAt || Date.now()),

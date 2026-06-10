@@ -1,12 +1,12 @@
 ﻿// ============================================================
 //  MAP CONTROLLER - index.html
-//  Khá»Ÿi táº¡o báº£n Ä‘á»“, quáº£n lÃ½ giao diá»‡n chÃ­nh
+//  Khởi tạo bản đồ, quản lý giao diện chính
 // ============================================================
 
 document.addEventListener("DOMContentLoaded", () => {
   const cfg = window.APP_CONFIG;
 
-  // â”€â”€â”€ Init Leaflet Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Khởi tạo Leaflet Map
 
   const map = L.map("map", {
     center: cfg.MAP_CENTER,
@@ -60,13 +60,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let mapModeIndex = 0;
   window._map = map;
 
-  // â”€â”€â”€ Attribution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Thông tin bản quyền bản đồ
 
   L.control.attribution({ position: "bottomleft", prefix: false })
     .addAttribution("Â© <a href='https://carto.com' style='color:#00d4ff'>CARTO</a> | <a href='https://leafletjs.com' style='color:#00d4ff'>Leaflet</a> | <a href='https://tiles.arcgis.com/tiles/EaQ3hSM51DBnlwMq/arcgis/rest/services/VietnamLabels/MapServer' style='color:#00d4ff'>VietnamLabels</a> | Public Transport Tracker")
     .addTo(map);
 
-  // â”€â”€â”€ Managers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Khởi tạo các manager
 
   const vehicleMgr = new VehicleManager(map);
   const routeMgr = new RouteManager(map);
@@ -78,14 +78,15 @@ document.addEventListener("DOMContentLoaded", () => {
   let routeStops = [];
   let autoStops = [];
   let latestVehicles = [];
+  let latestHistoryByVehicle = {};
   const baseRoutes = window.BUS_ROUTES || [];
   const virtualBuses = window.VIRTUAL_BUSES || [];
   const realtimeVehicleId = window.REALTIME_VEHICLE_ID || "bus_001";
 
   function mergeRoutes(firebaseRoutes = []) {
     const merged = new Map();
-    baseRoutes.forEach(route => merged.set(route.id, route));
     firebaseRoutes.forEach(route => merged.set(route.id, route));
+    baseRoutes.forEach(route => merged.set(route.id, route));
     return [...merged.values()];
   }
 
@@ -107,34 +108,56 @@ document.addEventListener("DOMContentLoaded", () => {
     const path = Array.isArray(route?.path) && route.path.length >= 2 ? route.path : route?.stops;
     if (!Array.isArray(path) || path.length < 2) return null;
 
-    const travelSeconds = 18;
-    const dwellSeconds = 5 + (busIndex % 3) * 2;
-    const elapsed = (Date.now() / 1000 + busIndex * 7) % ((travelSeconds * 2) + (dwellSeconds * 2));
-    let t;
+    const travelSeconds = 24;
+    const phase = ((Date.now() / 1000 + busIndex * 7) % (travelSeconds * 2)) / travelSeconds;
+    const isReturning = phase > 1;
+    const t = isReturning ? 2 - phase : phase;
 
-    if (elapsed < travelSeconds) {
-      t = elapsed / travelSeconds;
-    } else if (elapsed < travelSeconds + dwellSeconds) {
-      t = 1;
-    } else if (elapsed < travelSeconds * 2 + dwellSeconds) {
-      t = 1 - ((elapsed - travelSeconds - dwellSeconds) / travelSeconds);
-    } else {
-      t = 0;
+    const distance = (a, b) => {
+      const lat1 = Number(a.lat) * Math.PI / 180;
+      const lat2 = Number(b.lat) * Math.PI / 180;
+      const dLat = lat2 - lat1;
+      const dLng = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+
+    const segments = path.slice(0, -1).map((point, index) => ({
+      a: point,
+      b: path[index + 1],
+      length: distance(point, path[index + 1]),
+    }));
+    const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+    let target = t * totalLength;
+    let segmentIndex = 0;
+    let segment = segments[0];
+
+    for (let i = 0; i < segments.length; i++) {
+      if (target <= segments[i].length) {
+        segmentIndex = i;
+        segment = segments[i];
+        break;
+      }
+      target -= segments[i].length;
     }
 
-    const scaled = t * (path.length - 1);
-    const index = Math.min(path.length - 2, Math.floor(scaled));
-    const local = scaled - index;
-    const a = path[index];
-    const b = path[index + 1];
-    const lat = Number(a.lat) + (Number(b.lat) - Number(a.lat)) * local;
-    const lng = Number(a.lng) + (Number(b.lng) - Number(a.lng)) * local;
+    const local = segment.length > 0 ? target / segment.length : 0;
+    const lat = Number(segment.a.lat) + (Number(segment.b.lat) - Number(segment.a.lat)) * local;
+    const lng = Number(segment.a.lng) + (Number(segment.b.lng) - Number(segment.a.lng)) * local;
+    const nearestStopIndex = (route.stops || []).reduce((bestIndex, stop, index, stops) => {
+      const best = stops[bestIndex];
+      const currentDist = distance({ lat, lng }, stop);
+      const bestDist = distance({ lat, lng }, best);
+      return currentDist < bestDist ? index : bestIndex;
+    }, 0);
 
     return {
       lat,
       lng,
-      currentStop: route.stops?.[index]?.name || a.name,
-      nextStop: route.stops?.[index + 1]?.name || b.name,
+      currentStop: route.stops?.[nearestStopIndex]?.name || path[segmentIndex]?.name,
+      nextStop: isReturning
+        ? route.stops?.[nearestStopIndex - 1]?.name || route.stops?.[nearestStopIndex]?.name || segment.a.name
+        : route.stops?.[nearestStopIndex + 1]?.name || route.stops?.[nearestStopIndex]?.name || segment.b.name,
     };
   }
 
@@ -158,6 +181,42 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
+  function buildRealtimeVehicleFromHistory(vehicleId) {
+    const history = latestHistoryByVehicle?.[vehicleId] || [];
+    if (!history.length) return null;
+
+    const lastPoint = history[history.length - 1];
+    if (!lastPoint || !Number.isFinite(Number(lastPoint.lat)) || !Number.isFinite(Number(lastPoint.lng))) {
+      return null;
+    }
+
+    const routeInfo = window.detectRouteFromGPS
+      ? window.detectRouteFromGPS(Number(lastPoint.lat), Number(lastPoint.lng))
+      : null;
+
+    return {
+      id: vehicleId,
+      name: lastPoint.name || "Xe Bus IoT 01",
+      type: "bus",
+      status: "offline",
+      isRealtime: true,
+      gpsValid: false,
+      lat: Number(lastPoint.lat),
+      lng: Number(lastPoint.lng),
+      speed: Number(lastPoint.speed || 0),
+      passengers: Number(lastPoint.passengers || 0),
+      irIn: Number(lastPoint.irIn || 0),
+      irOut: Number(lastPoint.irOut || 0),
+      capacity: Number(lastPoint.capacity || 80),
+      routeId: lastPoint.routeId || routeInfo?.routeId || "",
+      route: routeInfo?.routeName || "Tuyến GPS thực tế",
+      routeColor: routeInfo?.routeColor || "#00d4ff",
+      currentStop: lastPoint.currentStop || routeInfo?.currentStop || "Mất GPS",
+      nextStop: lastPoint.nextStop || "Chờ GPS mới",
+      lastUpdated: Number(lastPoint.createdAt || Date.now()),
+    };
+  }
+
   function buildVehicleFleet(firebaseVehicles = []) {
     const realtimeVehicles = firebaseVehicles
       .filter(v => v.id === realtimeVehicleId)
@@ -165,6 +224,11 @@ document.addEventListener("DOMContentLoaded", () => {
         ...v,
         isRealtime: true,
       }));
+
+    if (!realtimeVehicles.length) {
+      const fallbackRealtime = buildRealtimeVehicleFromHistory(realtimeVehicleId);
+      if (fallbackRealtime) realtimeVehicles.push(fallbackRealtime);
+    }
 
     return [...realtimeVehicles, ...virtualBuses.map(materializeVirtualBus).filter(Boolean)];
   }
@@ -272,7 +336,7 @@ document.addEventListener("DOMContentLoaded", () => {
       div.dataset.routeId = "gps_auto_route";
       div.innerHTML = `
         <span class="rt-dot" style="background:#00d4ff"></span>
-        <span class="rt-name">Tuyen GPS thuc te</span>
+        <span class="rt-name">Tuyến GPS thực tế</span>
         <span class="rt-type">Auto</span>
       `;
       div.addEventListener("click", () => {
@@ -307,7 +371,7 @@ document.addEventListener("DOMContentLoaded", () => {
     autoStops = (e.detail || []).map(s => ({
       ...s,
       name: formatStopLabel(s.name),
-      routeName: s.routeName || "Tuyen GPS thuc te",
+      routeName: s.routeName || "Tuyến GPS thực tế",
       routeColor: s.routeColor || "#00d4ff",
     }));
     allStops = [...routeStops, ...autoStops];
@@ -315,7 +379,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateNearestStops();
   });
 
-  // â”€â”€â”€ Vehicle List Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Bảng danh sách phương tiện
 
   const listEl = document.getElementById("vehicle-list");
   const statsEl = document.getElementById("stats-bar");
@@ -345,7 +409,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isDelayed = v.status === "delayed";
       const isFire = vehicleMgr.isFireAlert(v);
       const typeIcon = v.type === "bus" ? "&#128652;" : "&#128647;";
-      const color = v.routeColor || "#00d4ff";
+      const color = v.vehicleColor || v.routeColor || "#00d4ff";
 
       return `
         <div class="vehicle-item ${isDelayed ? "item-delayed" : ""} ${isFire ? "item-fire" : ""} ${vehicleMgr.selectedId === v.id ? "item-selected" : ''}"
@@ -392,7 +456,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // â”€â”€â”€ IR Sensor Widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Widget cảm biến IR
 
   let irCountIn = 0;
   let irCountOut = 0;
@@ -463,7 +527,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setIrVehicle(selected || fallback, true);
   });
 
-  // â”€â”€â”€ Filter Buttons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Nút lọc phương tiện
 
   document.querySelectorAll(".filter-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -473,11 +537,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // â”€â”€â”€ Route Toggle Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Bảng bật/tắt tuyến đường
 
   // Routes are initialized after the location state is ready.
 
-  // â”€â”€â”€ Search Suggestions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Gợi ý tìm kiếm trạm
 
   const searchInput = document.getElementById("search-input");
   const suggestionsBox = document.getElementById("search-suggestions");
@@ -513,7 +577,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // â”€â”€â”€ Map Tile Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Chuyển lớp bản đồ
 
   document.getElementById("tile-toggle")?.addEventListener("click", () => {
     baseLayers.forEach(layer => {
@@ -527,7 +591,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   map.on("zoomend", updateVietnamLabelsVisibility);
 
-  // â”€â”€â”€ Locate Me & Nearest Stops â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Vị trí người dùng và trạm gần nhất
 
   let userLocation = L.latLng(cfg.MAP_CENTER[0], cfg.MAP_CENTER[1]); // default to center
   let userMarker = null;
@@ -598,7 +662,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateNearestStops();
   });
 
-  // â”€â”€â”€ Firebase Connection Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Trạng thái kết nối Firebase
 
   const connDot = document.getElementById("conn-dot");
   const connText = document.getElementById("conn-text");
@@ -609,7 +673,7 @@ document.addEventListener("DOMContentLoaded", () => {
     connText.textContent = ok ? "Firebase: Kết nối" : "Firebase: Mất kết nối";
   });
 
-  // â”€â”€â”€ Data Source â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Nguồn dữ liệu Firebase
   try {
       const fbService = new FirebaseService();
       window._fbService = fbService;
@@ -634,9 +698,14 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       fbService.onVehicleHistoryUpdate((historyByVehicle) => {
+        latestHistoryByVehicle = historyByVehicle || {};
         vehicleMgr.loadPersistedHistory({
-          [realtimeVehicleId]: historyByVehicle?.[realtimeVehicleId] || [],
+          [realtimeVehicleId]: latestHistoryByVehicle?.[realtimeVehicleId] || [],
         });
+        latestVehicles = buildVehicleFleet(
+          latestVehicles.filter(v => !v.isVirtual && v.id === realtimeVehicleId)
+        );
+        vehicleMgr.update(enrichVehiclesWithRoutes(latestVehicles));
         renderRouteToggles(activeRoutes);
       });
 
@@ -655,7 +724,7 @@ document.addEventListener("DOMContentLoaded", () => {
         vehicleMgr.update(enrichedVehicles);
 
         if (latestVehicles.length === 0) {
-          // Firebase rá»—ng â€” hiá»‡n tráº¡ng thÃ¡i chá»
+          // Firebase rỗng, hiển thị trạng thái chờ
           listEl.innerHTML = `
             <div style="padding:24px 16px; text-align:center;">
               <div style="font-size:32px; margin-bottom:10px; animation:pulse 2s infinite;">GPS</div>
@@ -666,7 +735,7 @@ document.addEventListener("DOMContentLoaded", () => {
               </div>
             </div>`;
 
-          // áº¨n IR widget khi khÃ´ng cÃ³ xe
+          // Ẩn widget IR khi không có xe
           const irWidget = document.getElementById("ir-widget");
           if (irWidget) irWidget.style.opacity = "0.4";
         } else {
@@ -690,7 +759,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>`;
     }
 
-  // â”€â”€â”€ Sidebar Toggle (mobile) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Thu gọn/mở sidebar trên mobile
 
   document.getElementById("sidebar-toggle")?.addEventListener("click", () => {
     document.getElementById("sidebar").classList.toggle("collapsed");
@@ -701,7 +770,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => map.invalidateSize(), 250);
   }
 
-  // â”€â”€â”€ Clock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Đồng hồ
 
   const clockEl = document.getElementById("clock");
   const updateClock = () => {

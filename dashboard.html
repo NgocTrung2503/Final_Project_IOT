@@ -4,320 +4,310 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard | Public Transport Tracker</title>
-  <meta name="description" content="Dashboard thống kê và theo dõi phương tiện giao thông công cộng" />
+  <meta name="description" content="Dashboard th&#7889;ng k&#234; v&#224; theo d&#245;i ph&#432;&#417;ng ti&#7879;n giao th&#244;ng c&#244;ng c&#7897;ng" />
   <link rel="stylesheet" href="css/dashboard.css" />
 </head>
 <body>
 
-<!-- Header -->
 <header id="header">
   <a class="header-logo" href="index.html">
-    <div class="logo-icon">🚍</div>
+    <div class="logo-icon">&#128653;</div>
     <div>
       <div class="logo-text">TransTrack</div>
-      <div class="logo-sub">TP. HỒ CHÍ MINH</div>
+      <div class="logo-sub">TP. H&#7890; CH&#205; MINH</div>
     </div>
   </a>
   <div class="header-sep"></div>
   <nav class="header-nav">
-    <a class="nav-btn" href="index.html">🗺️ Bản đồ</a>
-    <a class="nav-btn active" href="dashboard.html">📊 Dashboard</a>
-    <a class="nav-btn" href="admin.html">⚙️ Admin</a>
+    <a class="nav-btn" href="index.html">&#128506;&#65039; B&#7843;n &#273;&#7891;</a>
+    <a class="nav-btn active" href="dashboard.html">&#128202; Dashboard</a>
+    <a class="nav-btn" href="admin.html">&#9881;&#65039; Admin</a>
   </nav>
   <div class="header-spacer"></div>
-  <!-- Auth buttons — được điều khiển bằng JS -->
   <div style="display:flex; align-items:center; gap:8px;">
-    <div id="admin-badge" style="display:none; align-items:center; gap:5px; padding:5px 12px;
-         border-radius:8px; font-size:12px; font-weight:700;
-         background:rgba(168,85,247,0.12); color:#a855f7; border:1px solid rgba(168,85,247,0.25);">
-      🔧 Admin
+    <div id="admin-badge" style="display:none; align-items:center; gap:5px; padding:5px 12px; border-radius:8px; font-size:12px; font-weight:700; background:rgba(168,85,247,0.12); color:#a855f7; border:1px solid rgba(168,85,247,0.25);">
+      &#128295; Admin
     </div>
-    <button id="btn-logout" class="nav-btn" style="color:var(--red); display:none;"
-            onclick="window.AppAuth.logout()">🚪 Đăng xuất</button>
-    <a href="login.html" id="btn-login-link" class="nav-btn" style="color:var(--accent);">🔐 Đăng nhập Admin</a>
+    <button id="btn-logout" class="nav-btn" style="color:var(--red); display:none;" onclick="window.AppAuth.logout()">&#128682; &#272;&#259;ng xu&#7845;t</button>
+    <a href="login.html" id="btn-login-link" class="nav-btn" style="color:var(--accent);">&#128274; &#272;&#259;ng nh&#7853;p Admin</a>
   </div>
   <div class="header-sep"></div>
   <div id="clock">--:--:--</div>
 </header>
 
-<!-- Dashboard Body -->
 <main id="dashboard-scroll" style="overflow-y:auto; height:calc(100vh - 58px);">
-<div id="dashboard">
-
-  <!-- Page Header -->
-  <div class="page-header">
-    <div>
-      <h1 class="page-title">📊 Dashboard Giao thông</h1>
-      <div class="page-sub">Theo dõi hoạt động phương tiện công cộng theo thời gian thực</div>
-    </div>
-    <div class="page-date" id="page-date"></div>
-  </div>
-
-  <!-- KPI Cards -->
-  <div class="kpi-grid">
-
-    <div class="kpi-card" style="--kpi-color: #00d4ff">
-      <div class="kpi-icon">🚦</div>
-      <div class="kpi-value" id="kpi-total">0</div>
-      <div class="kpi-label">Tổng phương tiện</div>
-      <div class="kpi-trend up">▲ Đang hoạt động</div>
-    </div>
-
-    <div class="kpi-card" style="--kpi-color: #22c55e">
-      <div class="kpi-icon">✅</div>
-      <div class="kpi-value" id="kpi-active">0</div>
-      <div class="kpi-label">Đang hoạt động</div>
-      <div class="kpi-trend up">▲ Tất cả tuyến</div>
-    </div>
-
-    <div class="kpi-card" style="--kpi-color: #ef4444">
-      <div class="kpi-icon">⚠️</div>
-      <div class="kpi-value" id="kpi-delayed">0</div>
-      <div class="kpi-label">Trễ giờ</div>
-      <div class="kpi-trend down" id="delay-trend">Đang kiểm tra...</div>
-    </div>
-
-    <div class="kpi-card" style="--kpi-color: #a855f7">
-      <div class="kpi-icon">🎯</div>
-      <div class="kpi-value" id="kpi-ontime">0</div>
-      <div class="kpi-label">Đúng giờ</div>
-      <div class="kpi-trend up">▲ Tốt</div>
-    </div>
-
-    <div class="kpi-card" style="--kpi-color: #f59e0b">
-      <div class="kpi-icon">👥</div>
-      <div class="kpi-value" id="kpi-passengers">0</div>
-      <div class="kpi-label">Hành khách hiện tại</div>
-      <div class="kpi-trend up">▲ Tổng toàn mạng</div>
-    </div>
-
-  </div><!-- /kpi-grid -->
-
-  <!-- Charts Row -->
-  <div class="charts-row">
-
-    <!-- Hourly Activity Chart -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">📈 Hoạt động theo giờ trong ngày</div>
-        <div class="card-badge">Hôm nay</div>
-      </div>
-      <div class="chart-wrap" style="height:240px">
-        <canvas id="hourly-chart"></canvas>
-      </div>
-    </div>
-
-    <!-- Type Distribution -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">🍩 Trạng thái chạy xe</div>
-        <span id="alert-count" style="display:none; background:var(--red); color:#fff; border-radius:10px; font-size:11px; padding:2px 7px; font-weight:700;"></span>
-      </div>
-      <div class="chart-wrap" style="height:240px">
-        <canvas id="type-chart"></canvas>
-      </div>
-    </div>
-
-  </div><!-- /charts-row -->
-
-  <!-- Schedule & Alerts -->
-  <div class="bottom-grid">
-
-    <!-- Schedule Table -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">🕐 Lịch trình tuyến đường</div>
-        <div class="card-badge">Live</div>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="schedule-table">
-          <thead>
-            <tr>
-              <th>Tuyến</th>
-              <th>Đang chạy</th>
-              <th>Trạng thái</th>
-              <th>Chuyến tiếp</th>
-              <th>Lịch</th>
-            </tr>
-          </thead>
-          <tbody id="schedule-tbody">
-            <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px">Đang tải...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Alert Feed -->
-    <div class="chart-card">
-      <div class="card-header">
-        <div class="card-title">🔔 Cảnh báo & thông báo</div>
-        <button onclick="document.getElementById('alert-feed').innerHTML=''; alertCount=0;" 
-                style="font-size:11px; padding:3px 8px; border-radius:4px; background:var(--bg-hover); border:1px solid var(--border); color:var(--text-muted); cursor:pointer;">
-          Xóa tất cả
-        </button>
-      </div>
-      <div class="alert-feed" id="alert-feed">
-        <div class="alert-item alert-info">
-          <span class="alert-icon">ℹ️</span>
-          <div class="alert-body">
-            <div class="alert-title">Hệ thống đang khởi động</div>
-            <div class="alert-msg">Đang tải dữ liệu phương tiện...</div>
-          </div>
-          <span class="alert-time">--:--</span>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /bottom-grid -->
-
-  <!-- IR Sensor Card ──────────────────────────────── -->
-  <div class="chart-card" style="border-top:3px solid #00d4ff; margin-bottom:20px;">
-    <div class="card-header">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span style="font-size:20px">📡</span>
-        <div>
-          <div class="card-title">Cảm biến Hồng Ngoại (IR) &mdash; Đếm Hành Khách Thực Tế</div>
-          <div style="font-size:11px; color:#4a5568; margin-top:2px;">Dữ liệu từ ESP32 + Sensor IR → Firebase → Web (Realtime)</div>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <label style="font-size:11px; color:#94a3b8; display:flex; align-items:center; gap:6px;">
-          📅 Chọn ngày:
-          <input type="date" id="ir-date-picker" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:4px 8px; color:var(--text-primary); font-size:12px; cursor:pointer;" />
-        </label>
-        <div id="ir-status-dot" style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e;"></div>
-        <div class="card-badge" id="ir-badge-label">Live</div>
-      </div>
-    </div>
-
-    <!-- KPI Row -->
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;">
-      <div style="background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:10px; font-weight:700; color:#22c55e; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">▲ Tổng Lên Xe</div>
-        <div id="db-ir-in" style="font-size:28px; font-weight:800; color:#22c55e;">0</div>
-        <div style="font-size:11px; color:#4a5568;">lượt</div>
-      </div>
-      <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:10px; font-weight:700; color:#ef4444; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">▼ Tổng Xuống Xe</div>
-        <div id="db-ir-out" style="font-size:28px; font-weight:800; color:#ef4444;">0</div>
-        <div style="font-size:11px; color:#4a5568;">lượt</div>
-      </div>
-      <div style="background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:10px; font-weight:700; color:#00d4ff; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">👥 Trên Xe Hiện Tại</div>
-        <div id="db-ir-total" style="font-size:28px; font-weight:800; color:#00d4ff;">0</div>
-        <div style="font-size:11px; color:#4a5568;">hành khách</div>
-      </div>
-      <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:10px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">📊 Sức Chứa</div>
-        <div id="db-ir-pct" style="font-size:28px; font-weight:800; color:#f59e0b;">0%</div>
-        <div style="font-size:11px; color:#4a5568;">(tối đa 80 người)</div>
-      </div>
-    </div>
-
-    <!-- Capacity bar -->
-    <div style="margin-bottom:16px;">
-      <div style="display:flex; justify-content:space-between; font-size:11px; color:#4a5568; margin-bottom:6px;">
-        <span>Mức độ lấp đầy xe</span>
-        <span id="db-ir-cap-label">0/80 chỗ</span>
-      </div>
-      <div style="height:8px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden;">
-        <div id="db-ir-capbar" style="height:100%; border-radius:4px; background:linear-gradient(90deg,#22c55e,#00d4ff); width:0%; transition:width 0.6s ease;"></div>
-      </div>
-    </div>
-
-    <!-- Chart + Log -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+  <div id="dashboard">
+    <div class="page-header">
       <div>
-        <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">📈 Biểu đồ hành khách theo thời gian</div>
-        <div style="height:220px;"><canvas id="ir-chart"></canvas></div>
+        <h1 class="page-title">&#128202; Dashboard Giao th&#244;ng</h1>
+        <div class="page-sub">Theo d&#245;i ho&#7841;t &#273;&#7897;ng ph&#432;&#417;ng ti&#7879;n c&#244;ng c&#7897;ng theo th&#7901;i gian th&#7921;c</div>
       </div>
-      <div>
-        <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">📝 Nhật ký sự kiện IR <span id="ir-event-count" style="color:#4a5568; font-weight:400;"></span></div>
-        <div id="ir-event-log" style="height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:4px;">
-          <div style="font-size:12px; color:#4a5568; padding:8px 0;">Đang tải dữ liệu...</div>
-        </div>
+      <div class="page-date" id="page-date"></div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="--kpi-color: #00d4ff">
+        <div class="kpi-icon">&#128678;</div>
+        <div class="kpi-value" id="kpi-total">0</div>
+        <div class="kpi-label">T&#7893;ng ph&#432;&#417;ng ti&#7879;n</div>
+        <div class="kpi-trend up">&#9650; &#272;ang ho&#7841;t &#273;&#7897;ng</div>
+      </div>
+
+      <div class="kpi-card" style="--kpi-color: #22c55e">
+        <div class="kpi-icon">&#9989;</div>
+        <div class="kpi-value" id="kpi-active">0</div>
+        <div class="kpi-label">&#272;ang ho&#7841;t &#273;&#7897;ng</div>
+        <div class="kpi-trend up">&#9650; T&#7845;t c&#7843; tuy&#7871;n</div>
+      </div>
+
+      <div class="kpi-card" style="--kpi-color: #ef4444">
+        <div class="kpi-icon">&#9888;&#65039;</div>
+        <div class="kpi-value" id="kpi-delayed">0</div>
+        <div class="kpi-label">Tr&#7877; gi&#7901;</div>
+        <div class="kpi-trend down" id="delay-trend">&#272;ang ki&#7875;m tra...</div>
+      </div>
+
+      <div class="kpi-card" style="--kpi-color: #a855f7">
+        <div class="kpi-icon">&#127919;</div>
+        <div class="kpi-value" id="kpi-ontime">0</div>
+        <div class="kpi-label">&#272;&#250;ng gi&#7901;</div>
+        <div class="kpi-trend up">&#9650; T&#7889;t</div>
+      </div>
+
+      <div class="kpi-card" style="--kpi-color: #f59e0b">
+        <div class="kpi-icon">&#128101;</div>
+        <div class="kpi-value" id="kpi-passengers">0</div>
+        <div class="kpi-label">H&#224;nh kh&#225;ch hi&#7879;n t&#7841;i</div>
+        <div class="kpi-trend up">&#9650; T&#7893;ng to&#224;n m&#7841;ng</div>
       </div>
     </div>
-  </div>
 
-
-  <!-- Smart Scheduling & Route Summary Cards -->
-  <div>
-    <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:16px;">🛣️ Chi tiết tuyến & Hệ thống Điều phối (Smart Scheduling)</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-      
-      <!-- Route Cards -->
-      <div id="route-cards" style="display:flex; flex-direction:column; gap:16px;"></div>
-      
-      <!-- Smart Scheduling Feed -->
+    <div class="charts-row">
       <div class="chart-card">
         <div class="card-header">
-          <div class="card-title" style="color:var(--accent)">🧠 Quyết định của hệ thống AI</div>
+          <div class="card-title">&#128200; Ho&#7841;t &#273;&#7897;ng theo gi&#7901; trong ng&#224;y</div>
+          <div class="card-badge">H&#244;m nay</div>
+        </div>
+        <div class="chart-wrap" style="height:240px">
+          <canvas id="hourly-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="card-header">
+          <div class="card-title">&#127849; Tr&#7841;ng th&#225;i ch&#7841;y xe</div>
+          <span id="alert-count" style="display:none; background:var(--red); color:#fff; border-radius:10px; font-size:11px; padding:2px 7px; font-weight:700;"></span>
+        </div>
+        <div class="chart-wrap" style="height:240px">
+          <canvas id="type-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-grid">
+      <div class="chart-card">
+        <div class="card-header">
+          <div class="card-title">&#128336; L&#7883;ch tr&#236;nh tuy&#7871;n &#273;&#432;&#7901;ng</div>
           <div class="card-badge">Live</div>
         </div>
-        <div class="alert-feed" id="smart-feed">
-          <div class="alert-item" style="border-left:3px solid var(--accent)">
-            <span class="alert-icon">🤖</span>
+        <div style="overflow-x:auto">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th>Tuy&#7871;n</th>
+                <th>&#272;ang ch&#7841;y</th>
+                <th>Tr&#7841;ng th&#225;i</th>
+                <th>Chuy&#7871;n ti&#7871;p</th>
+                <th>L&#7883;ch</th>
+              </tr>
+            </thead>
+            <tbody id="schedule-tbody">
+              <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px">&#272;ang t&#7843;i...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="card-header">
+          <div class="card-title">&#128276; C&#7843;nh b&#225;o & th&#244;ng b&#225;o</div>
+          <button onclick="document.getElementById('alert-feed').innerHTML=''; alertCount=0;" style="font-size:11px; padding:3px 8px; border-radius:4px; background:var(--bg-hover); border:1px solid var(--border); color:var(--text-muted); cursor:pointer;">
+            X&#243;a t&#7845;t c&#7843;
+          </button>
+        </div>
+        <div class="alert-feed" id="alert-feed">
+          <div class="alert-item alert-info">
+            <span class="alert-icon">&#8505;&#65039;</span>
             <div class="alert-body">
-              <div class="alert-title">AI Đang giám sát</div>
-              <div class="alert-msg">Phân tích lượng khách để quyết định dừng/bỏ trạm và giãn chuyến.</div>
+              <div class="alert-title">H&#7879; th&#7889;ng &#273;ang kh&#7903;i &#273;&#7897;ng</div>
+              <div class="alert-msg">&#272;ang t&#7843;i d&#7919; li&#7879;u ph&#432;&#417;ng ti&#7879;n...</div>
             </div>
-            <span class="alert-time">Live</span>
+            <span class="alert-time">--:--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="border-top:3px solid #00d4ff; margin-bottom:20px;">
+      <div class="card-header">
+        
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:20px">&#128225;</span>
+          <div>
+            <div class="card-title">C&#7843;m bi&#7871;n H&#7891;ng Ngo&#7841;i (IR) &mdash; &#272;&#7871;m H&#224;nh Kh&#225;ch Th&#7921;c T&#7871;</div>
+            <div style="font-size:11px; color:#4a5568; margin-top:2px;">D&#7919; li&#7879;u t&#7915; ESP32 + Sensor IR &rarr; Firebase &rarr; Web (Realtime)</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="font-size:11px; color:#94a3b8; display:flex; align-items:center; gap:6px;">
+            &#128197; Ch&#7885;n ng&#224;y:
+            <input type="date" id="ir-date-picker" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:4px 8px; color:var(--text-primary); font-size:12px; cursor:pointer;" />
+          </label>
+          <div id="ir-status-dot" style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e;"></div>
+          <div class="card-badge" id="ir-badge-label">Live</div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;">
+        <div style="background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:10px; font-weight:700; color:#22c55e; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">&#9650; T&#7893;ng L&#234;n Xe</div>
+          <div id="db-ir-in" style="font-size:28px; font-weight:800; color:#22c55e;">0</div>
+          <div style="font-size:11px; color:#4a5568;">l&#432;&#7907;t</div>
+        </div>
+        <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:10px; font-weight:700; color:#ef4444; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">&#9660; T&#7893;ng Xu&#7889;ng Xe</div>
+          <div id="db-ir-out" style="font-size:28px; font-weight:800; color:#ef4444;">0</div>
+          <div style="font-size:11px; color:#4a5568;">l&#432;&#7907;t</div>
+        </div>
+        <div style="background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:10px; font-weight:700; color:#00d4ff; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">&#128101; Tr&#234;n Xe Hi&#7879;n T&#7841;i</div>
+          <div id="db-ir-total" style="font-size:28px; font-weight:800; color:#00d4ff;">0</div>
+          <div style="font-size:11px; color:#4a5568;">h&#224;nh kh&#225;ch</div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2); border-radius:10px; padding:14px; text-align:center;">
+          <div style="font-size:10px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">&#128202; S&#7913;c Ch&#7913;a</div>
+          <div id="db-ir-pct" style="font-size:28px; font-weight:800; color:#f59e0b;">0%</div>
+          <div style="font-size:11px; color:#4a5568;">(t&#7889;i &#273;a 80 ng&#432;&#7901;i)</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:#4a5568; margin-bottom:6px;">
+          <span>M&#7913;c &#273;&#7897; l&#7845;p &#273;&#7847;y xe</span>
+          <span id="db-ir-cap-label">0/80 ch&#7895;</span>
+        </div>
+        <div style="height:8px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden;">
+          <div id="db-ir-capbar" style="height:100%; border-radius:4px; background:linear-gradient(90deg,#22c55e,#00d4ff); width:0%; transition:width 0.6s ease;"></div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">&#128200; Bi&#7875;u &#273;&#7891; h&#224;nh kh&#225;ch theo th&#7901;i gian</div>
+          <div style="height:220px;"><canvas id="ir-chart"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">&#128221; Nh&#7853;t k&#253; s&#7921; ki&#7879;n IR <span id="ir-event-count" style="color:#4a5568; font-weight:400;"></span></div>
+          <div id="ir-event-log" style="height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:4px;">
+            <div style="font-size:12px; color:#4a5568; padding:8px 0;">&#272;ang t&#7843;i d&#7919; li&#7879;u...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:14px; font-weight:700; color:var(--text-primary); margin-bottom:16px;">&#128739;&#65039; Chi ti&#7871;t tuy&#7871;n & H&#7879; th&#7889;ng &#272;i&#7873;u ph&#7889;i (Smart Scheduling)</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div id="route-cards" style="display:flex; flex-direction:column; gap:16px;"></div>
+
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title" style="color:var(--accent)">&#129504; Quy&#7871;t &#273;&#7883;nh c&#7911;a h&#7879; th&#7889;ng AI</div>
+            <div class="card-badge">Live</div>
+          </div>
+          <div class="alert-feed" id="smart-feed">
+            <div class="alert-item" style="border-left:3px solid var(--accent)">
+              <span class="alert-icon">&#129302;</span>
+              <div class="alert-body">
+                <div class="alert-title">AI &#273;ang gi&#225;m s&#225;t</div>
+                <div class="alert-msg">Ph&#226;n t&#237;ch l&#432;&#7907;ng kh&#225;ch &#273;&#7875; quy&#7871;t &#273;&#7883;nh d&#7915;ng, b&#7887; tr&#7841;m v&#224; gi&#227;n chuy&#7871;n.</div>
+              </div>
+              <span class="alert-time">Live</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
-
-</div><!-- /dashboard -->
 </main>
 
-<!-- Scripts -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="js/firebase-config.js" charset="UTF-8"></script>
 <script src="js/auth.js" charset="UTF-8"></script>
-<!-- Dashboard không gọi requireAuth() — ai cũng xem được -->
 <script src="js/routes-config.js" charset="UTF-8"></script>
 <script src="js/firebase-service.js" charset="UTF-8"></script>
 <script src="js/dashboard.js" charset="UTF-8"></script>
 
 <script>
-  // Page date
   document.getElementById("page-date").textContent =
     new Date().toLocaleDateString("vi-VN", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
 
-  // Route cards
   window.addEventListener("DOMContentLoaded", () => {
     const container = document.getElementById("route-cards");
-    if (!container) return;
-    (window.BUS_ROUTES || []).forEach(r => {
-      const card = document.createElement("div");
-      card.style.cssText = `background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; border-top:3px solid ${r.color}`;
-      card.innerHTML = `
+    if (container) {
+      const routeCardStyle = color =>
+        `background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; border-top:3px solid ${color}`;
+
+      (window.BUS_ROUTES || []).forEach(r => {
+        const card = document.createElement("div");
+        card.style.cssText = routeCardStyle(r.color);
+        card.innerHTML = `
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+            <span style="font-size:22px">${r.type === "metro" ? "&#128647;" : "&#128652;"}</span>
+            <div>
+              <div style="font-size:13px; font-weight:700; color:var(--text-primary)">${r.name.split(" - ")[0]}</div>
+              <div style="font-size:11px; color:${r.color}; margin-top:2px">${r.name.split(" - ")[1] || ""}</div>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary)">
+            <div>&#128205; <strong>${r.stops.length}</strong> &#273;i&#7875;m d&#7915;ng</div>
+            <div>&#128336; <strong>${r.schedule.length}</strong> chuy&#7871;n / ng&#224;y</div>
+            <div>&#9200; &#272;&#7847;u: <strong style="color:${r.color}">${r.schedule[0]}</strong> - Cu&#7889;i: <strong style="color:${r.color}">${r.schedule[r.schedule.length - 1]}</strong></div>
+          </div>
+          <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:4px">
+            ${r.stops.map(s => `<span style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted)">${s.name}</span>`).join("")}
+          </div>`;
+        container.appendChild(card);
+      });
+
+      const gpsCard = document.createElement("div");
+      gpsCard.id = "gps-actual-route-card";
+      gpsCard.style.cssText = routeCardStyle("#00d4ff");
+      gpsCard.innerHTML = `
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
-          <span style="font-size:22px">${r.type === "metro" ? "🚇" : "🚌"}</span>
+          <span style="font-size:22px">&#128652;</span>
           <div>
-            <div style="font-size:13px; font-weight:700; color:var(--text-primary)">${r.name.split(" - ")[0]}</div>
-            <div style="font-size:11px; color:${r.color}; margin-top:2px">${r.name.split(" - ")[1] || ""}</div>
+            <div style="font-size:13px; font-weight:700; color:var(--text-primary)">Tuy&#7871;n GPS th&#7921;c t&#7871;</div>
+            <div style="font-size:11px; color:#00d4ff; margin-top:2px">Xe Bus IoT 01</div>
           </div>
         </div>
-        <div style="display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary)">
-          <div>📍 <strong>${r.stops.length}</strong> điểm dừng</div>
-          <div>🕐 <strong>${r.schedule.length}</strong> chuyến / ngày</div>
-          <div>⏰ Đầu: <strong style="color:${r.color}">${r.schedule[0]}</strong> — Cuối: <strong style="color:${r.color}">${r.schedule[r.schedule.length-1]}</strong></div>
+        <div id="gps-actual-route-info" style="display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-secondary)">
+          <div>&#128205; <strong>0</strong> &#273;i&#7875;m d&#7915;ng</div>
+          <div>&#128336; Tr&#7841;ng th&#225;i: <strong style="color:#64748b">Ch&#432;a c&#243; live GPS</strong></div>
+          <div>&#9200; C&#7853;p nh&#7853;t: <strong style="color:#00d4ff">--:--</strong></div>
         </div>
-        <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:4px">
-          ${r.stops.map(s => `<span style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted)">${s.name}</span>`).join("")}
+        <div id="gps-actual-route-stops" style="margin-top:12px; display:flex; flex-wrap:wrap; gap:4px">
+          <span style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted)">Ch&#7901; d&#7919; li&#7879;u tr&#7841;m d&#7915;ng</span>
         </div>`;
-      container.appendChild(card);
-    });
-    // ─── Hiển thị trạng thái đăng nhập ──────────────────────────────────
+      container.appendChild(gpsCard);
+    }
+
     if (window.AppAuth.isLoggedIn()) {
-      document.getElementById('btn-login-link').style.display = 'none';
-      document.getElementById('btn-logout').style.display = '';
-      document.getElementById('admin-badge').style.display = 'flex';
+      document.getElementById("btn-login-link").style.display = "none";
+      document.getElementById("btn-logout").style.display = "";
+      document.getElementById("admin-badge").style.display = "flex";
     }
   });
 </script>

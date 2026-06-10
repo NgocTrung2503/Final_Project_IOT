@@ -1,19 +1,32 @@
 ﻿// ============================================================
 //  VEHICLE MANAGER
-//  Quáº£n lÃ½ markers, popups vÃ  animation cá»§a phÆ°Æ¡ng tiá»‡n trÃªn báº£n Ä‘á»“
+//  Quản lý marker, popup và animation của phương tiện trên bản đồ
 // ============================================================
 
 class VehicleManager {
   constructor(map) {
     this.map = map;
-    this.markers = {};       // vehicleId â†’ L.marker
-    this.prevPositions = {}; // vehicleId â†’ {lat, lng}
+    this.markers = {};       // vehicleId -> L.marker
+    this.prevPositions = {}; // vehicleId -> {lat, lng}
     this.markerAnimations = {};
     this.pathHistory = {};
     this.trailLayers = {};
     this.trailSegmentLayers = {};
     this.autoStops = {};
     this.autoStopMarkers = {};
+    this.vehicleColors = {};
+    this.vehicleColorPalette = [
+      "#00d4ff",
+      "#22c55e",
+      "#f59e0b",
+      "#a855f7",
+      "#ef4444",
+      "#14b8a6",
+      "#f97316",
+      "#ec4899",
+      "#84cc16",
+      "#38bdf8",
+    ];
     this.reverseGeocodeCache = {};
     this.currentLocationCache = {};
     this.pendingGeocodes = new Set();
@@ -39,6 +52,22 @@ class VehicleManager {
     this.selectedId = null;
     this.filterType = "all"; // "all" | "bus" | "metro"
     this.onSelectCallback = null;
+  }
+
+  _assignVehicleColors(vehicles = []) {
+    const activeIds = [...new Set(vehicles.map(v => v?.id).filter(Boolean))].sort();
+    activeIds.forEach((id, index) => {
+      this.vehicleColors[id] = this.vehicleColorPalette[index % this.vehicleColorPalette.length];
+    });
+  }
+
+  _vehicleColor(vehicleOrId) {
+    const id = typeof vehicleOrId === "string" ? vehicleOrId : vehicleOrId?.id;
+    if (id && this.vehicleColors[id]) return this.vehicleColors[id];
+    if (vehicleOrId && typeof vehicleOrId === "object") {
+      return vehicleOrId.vehicleColor || vehicleOrId.routeColor || "#00d4ff";
+    }
+    return "#00d4ff";
   }
 
   setPersistenceHandlers({ saveHistoryPoint, saveAutoStop } = {}) {
@@ -183,8 +212,8 @@ class VehicleManager {
     return "Trạm GPS";
   }
 
-  // â”€â”€â”€ Æ¯u tiÃªn tÃªn khu vá»±c (giÃ¡o dá»¥c / hÃ nh chÃ­nh / cÃ´ng ty) trÆ°á»›c tÃªn Ä‘Æ°á»ng â”€â”€
-  // Tráº£ vá» null náº¿u khÃ´ng tÃ¬m tháº¥y khu vá»±c â†’ caller sáº½ thá»­ zoom=16 rá»“i Overpass
+  // Ưu tiên tên khu vực giáo dục, hành chính hoặc công ty trước tên đường.
+  // Trả về null nếu chưa tìm thấy khu vực để caller thử zoom=16 rồi Overpass.
   _isGpsStopName(name) {
     const clean = this._fixText(name || "").trim().toLowerCase();
     return !clean || clean === "trạm gps" || clean === "tram gps";
@@ -227,6 +256,13 @@ class VehicleManager {
     return text
       .replaceAll("Tr\u00e1\u00ba\u00a1m", "Trạm")
       .replaceAll("tr\u00e1\u00ba\u00a1m", "trạm")
+      .replaceAll("ThÃ¡nh GiÃ³ng", "Thánh Gióng")
+      .replaceAll("Th�nh Gi�ng", "Thánh Gióng")
+      .replaceAll("Th�nh Giọng", "Thánh Gióng")
+      .replaceAll("Ä", "Đ")
+      .replaceAll("Ä‘", "đ")
+      .replaceAll("â€“", "-")
+      .replaceAll("â€”", "-")
       .replaceAll("\u00f0\u0178\u0161\u0152", "&#128652;")
       .replaceAll("\u00f0\u0178\u0161\u2021", "&#128647;")
       .replaceAll("🚌", "&#128652;")
@@ -243,23 +279,23 @@ class VehicleManager {
     const neighbourhood = address.neighbourhood || address.quarter || address.suburb || "";
     const KW = /ktx|ký\s*túc|ky\s*tuc|dorm|\bktx\b|đại\s*học|dai\s*hoc|trường|truong|bệnh\s*viện|benh\s*vien|công\s*ty|cong\s*ty|văn\s*phòng|van\s*phong|trụ\s*sở|tru\s*so|ủy\s*ban|uy\s*ban/i;
 
-    // 1. LUÃ”N check address hierarchy â€” ká»ƒ cáº£ khi category=highway
-    //    (GPS trÃªn Ä‘Æ°á»ng TRONG campus váº«n cÃ³ address.university)
+    // 1. Luôn kiểm tra phân cấp địa chỉ, kể cả khi category=highway.
+    //    GPS trên đường trong campus vẫn có thể có address.university.
     const eduName = address.university || address.college ||
                     address.school     || address.kindergarten;
     if (eduName) return this._formatStopBaseName(eduName);
 
-    // 2. Neighbourhood / quarter / suburb chá»©a tá»« khÃ³a (ráº¥t phá»• biáº¿n á»Ÿ Viá»‡t Nam)
-    //    VÃ­ dá»¥: neighbourhood = "KTX Khu A", quarter = "KÃ½ tÃºc xÃ¡"
+    // 2. Neighbourhood / quarter / suburb chứa từ khóa, khá phổ biến ở Việt Nam.
+    //    Ví dụ: neighbourhood = "KTX Khu A", quarter = "Ký túc xá".
     if (neighbourhood && KW.test(neighbourhood)) return this._formatStopBaseName(neighbourhood);
 
-    // 3. TÃªn tÃ²a nhÃ  trong address chá»©a tá»« khÃ³a
+    // 3. Tên tòa nhà trong address chứa từ khóa.
     if (building && KW.test(building)) return this._formatStopBaseName(building);
 
-    // 4. Náº¿u lÃ  highway/place vÃ  khÃ´ng cÃ³ context khu vá»±c â†’ null Ä‘á»ƒ thá»­ zoom=16
+    // 4. Nếu là highway/place và thiếu context khu vực, trả null để thử zoom=16.
     if (category === "highway" || category === "place") return null;
 
-    // 5. TÃªn POI Nominatim khi category/type lÃ  khu vá»±c cá»¥ thá»ƒ
+    // 5. Tên POI Nominatim khi category/type là khu vực cụ thể.
     const AREA_CATEGORIES = new Set(["amenity", "office", "building", "landuse", "leisure"]);
     const AREA_TYPES = new Set([
       "university", "college", "school", "kindergarten",
@@ -271,15 +307,15 @@ class VehicleManager {
       return this._formatStopBaseName(poiName);
     }
 
-    // 6. TÃªn POI báº¥t ká»³ chá»©a tá»« khÃ³a khu vá»±c
+    // 6. Tên POI bất kỳ có chứa từ khóa khu vực.
     if (poiName && KW.test(poiName)) return this._formatStopBaseName(poiName);
 
-    // 7. TÃ²a nhÃ  cÃ³ tÃªn cá»¥ thá»ƒ (khÃ´ng pháº£i "yes")
+    // 7. Tòa nhà có tên cụ thể, không phải giá trị "yes".
     if (building && building !== "yes" && building.length > 3) {
       return this._formatStopBaseName(building);
     }
 
-    // KhÃ´ng tÃ¬m tháº¥y khu vá»±c â†’ null Ä‘á»ƒ caller thá»­ zoom=16 rá»“i Overpass
+    // Không tìm thấy khu vực, trả null để caller thử zoom=16 rồi Overpass.
     return null;
   }
 
@@ -309,8 +345,8 @@ class VehicleManager {
       (stops || []).map(stop => ({
         ...stop,
         vehicleId,
-        routeName: "Tuyen GPS thuc te",
-        routeColor: "#00d4ff",
+        routeName: "Tuyến GPS thực tế",
+        routeColor: this._vehicleColor(vehicleId),
         isAutoStop: true,
       }))
     );
@@ -347,6 +383,56 @@ class VehicleManager {
     this.autoStopMarkers[vehicleId][stop.id] = marker;
   }
 
+  _renderTrailSegments(vehicleId, segments, color) {
+    if (this.trailSegmentLayers[vehicleId]) {
+      this.trailSegmentLayers[vehicleId].forEach(layer => {
+        if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+      });
+    }
+
+    this.trailSegmentLayers[vehicleId] = (segments || [])
+      .filter(segment => segment.length >= 2)
+      .map(segment => L.polyline(segment, {
+        color,
+        weight: 6,
+        opacity: 0.95,
+        lineJoin: "round",
+        lineCap: "round",
+      }).addTo(this.map));
+
+    this.trailLayers[vehicleId] = this.trailSegmentLayers[vehicleId][0] || null;
+  }
+
+  _renderTrailFromPoints(vehicleId, points, color) {
+    const segments = (points || []).length >= 2 ? [points] : [];
+    this._renderTrailSegments(vehicleId, segments, color);
+  }
+
+  _splitHistoryTrail(points = []) {
+    const maxJumpMeters = 1700;
+    const maxGapMs = 60 * 60 * 1000;
+    const segments = [];
+    let current = [];
+
+    points.forEach(point => {
+      const latlng = [point.lat, point.lng];
+      const prev = current[current.length - 1];
+      const distance = prev ? this.map.distance(L.latLng(prev[0], prev[1]), L.latLng(latlng[0], latlng[1])) : 0;
+      const timeGap = prev?._createdAt && point.createdAt ? Math.abs(point.createdAt - prev._createdAt) : 0;
+      const shouldSplit = current.length && (distance > maxJumpMeters || timeGap > maxGapMs);
+
+      if (shouldSplit) {
+        if (current.length >= 2) segments.push(current.map(p => [p[0], p[1]]));
+        current = [];
+      }
+
+      current.push(Object.assign(latlng, { _createdAt: point.createdAt }));
+    });
+
+    if (current.length >= 2) segments.push(current.map(p => [p[0], p[1]]));
+    return segments;
+  }
+
   loadPersistedHistory(historyByVehicle = {}) {
     Object.entries(historyByVehicle || {}).forEach(([vehicleId, points]) => {
       const seen = new Set();
@@ -356,38 +442,19 @@ class VehicleManager {
           lng: Number(p.lng),
           createdAt: Number(p.createdAt || index + 1),
         }))
-        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+        .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && !(p.lat === 0 && p.lng === 0))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
         .filter(p => {
           const key = `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
-        })
-        .map(p => [p.lat, p.lng]);
+        });
       if (!normalized.length) return;
 
-      this.pathHistory[vehicleId] = normalized;
-      const color = this.markers[vehicleId]?._vehicleData?.routeColor || "#00d4ff";
-
-      if (this.trailSegmentLayers[vehicleId]) {
-        this.trailSegmentLayers[vehicleId].forEach(layer => {
-          if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
-        });
-      }
-
-      const segments = normalized.length >= 2 ? [normalized] : [];
-
-      this.trailSegmentLayers[vehicleId] = segments
-        .filter(segment => segment.length >= 2)
-        .map(segment => L.polyline(segment, {
-          color,
-          weight: 6,
-          opacity: 0.95,
-          lineJoin: "round",
-          lineCap: "round",
-        }).addTo(this.map));
-
-      this.trailLayers[vehicleId] = this.trailSegmentLayers[vehicleId][0] || null;
+      this.pathHistory[vehicleId] = normalized.map(p => [p.lat, p.lng]);
+      const color = this._vehicleColor(vehicleId);
+      this._renderTrailSegments(vehicleId, this._splitHistoryTrail(normalized), color);
     });
   }
 
@@ -397,13 +464,21 @@ class VehicleManager {
         id: stop.id || `${vehicleId}_auto_stop_${index + 1}`,
         lat: Number(stop.lat),
         lng: Number(stop.lng),
-        baseName: stop.baseName || stop.name || "Trạm GPS",
-        name: stop.name || stop.baseName || "Trạm GPS",
+        baseName: this._fixText(stop.baseName || stop.name || "Trạm GPS"),
+        name: this._fixText(stop.name || stop.baseName || "Trạm GPS"),
         createdAt: Number(stop.createdAt || Date.now()),
       })).filter(stop => Number.isFinite(stop.lat) && Number.isFinite(stop.lng));
 
-      const color = this.markers[vehicleId]?._vehicleData?.routeColor || "#00d4ff";
+      const color = this._vehicleColor(vehicleId);
       this.autoStops[vehicleId].forEach(stop => this._renderAutoStopMarker(vehicleId, stop, color));
+      const hasHistoryTrail = (this.pathHistory[vehicleId] || []).length >= 2;
+      if (!hasHistoryTrail) {
+        const stopTrail = this.autoStops[vehicleId]
+          .slice()
+          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+          .map(stop => [stop.lat, stop.lng]);
+        this._renderTrailFromPoints(vehicleId, stopTrail, color);
+      }
       this._renumberAutoStops(vehicleId);
     });
   }
@@ -419,7 +494,7 @@ class VehicleManager {
     if (this.pendingGeocodes.has(key)) return;
     this.pendingGeocodes.add(key);
 
-    // Sau khi resolve xong â†’ cáº­p nháº­t cáº£ popup láº«n sidebar vehicle list
+    // Sau khi resolve xong, cập nhật cả popup lẫn sidebar vehicle list.
     const updateVehiclePopup = () => {
       const marker = this.markers[vehicleId];
       if (marker?._vehicleData) {
@@ -427,7 +502,7 @@ class VehicleManager {
         Object.assign(marker._vehicleData, stopInfo);
         if (marker.isPopupOpen()) marker.setPopupContent(this.buildPopup(marker._vehicleData));
       }
-      // Re-dispatch Ä‘á»ƒ sidebar cáº­p nháº­t "Äiá»ƒm hiá»‡n táº¡i" ngay láº­p tá»©c
+      // Re-dispatch để sidebar cập nhật "Điểm hiện tại" ngay lập tức.
       const allData = this.getAllData();
       if (allData.length > 0) {
         document.dispatchEvent(new CustomEvent("vehicles-updated", { detail: allData }));
@@ -435,7 +510,7 @@ class VehicleManager {
     };
 
     try {
-      // â”€â”€ Phase 1: knownAreas polygon (nhanh, local) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Phase 1: knownAreas polygon, nhanh và local.
       const knownAreaName = this._knownAreaName(stop.lat, stop.lng);
       if (knownAreaName) {
         const baseName = this._formatStopBaseName(knownAreaName);
@@ -447,20 +522,20 @@ class VehicleManager {
         return;
       }
 
-      // â”€â”€ Phase 2: Nominatim zoom=18 (building / road level) â”€â”€â”€â”€â”€â”€
+      // Phase 2: Nominatim zoom=18 ở mức tòa nhà/đường.
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 9000);
       const url18 = `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&namedetails=1&zoom=18&lat=${stop.lat}&lon=${stop.lng}`;
       const res18 = await fetch(url18, { signal: controller.signal });
       clearTimeout(timeoutId);
       const data18 = await res18.json();
-      console.log("[StopName] zoom=18 â†’", data18.category, data18.type, data18.name, data18.address);
+      console.log("[StopName] zoom=18 →", data18.category, data18.type, data18.name, data18.address);
 
       let stopName = null;
 
-      // â”€â”€ Phase 2b: Nominatim zoom=16 (campus / area level) â”€â”€â”€â”€â”€â”€â”€â”€
-      // zoom=18 thÆ°á»ng tráº£ vá» building/road; zoom=16 tráº£ vá» khu vá»±c rá»™ng hÆ¡n
-      // (university campus, bá»‡nh viá»‡n, KTX complex...)
+      // Phase 2b: Nominatim zoom=16 ở mức campus/khu vực.
+      // zoom=18 thường trả về tòa nhà/đường; zoom=16 trả về khu vực rộng hơn
+      // như campus đại học, bệnh viện hoặc khu ký túc xá.
       if (stopName === null) {
         try {
           const ctrl16 = new AbortController();
@@ -468,9 +543,9 @@ class VehicleManager {
           const url16 = `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&namedetails=1&zoom=16&lat=${stop.lat}&lon=${stop.lng}`;
           const res16 = await fetch(url16, { signal: ctrl16.signal });
           const data16 = await res16.json();
-          console.log("[StopName] zoom=16 â†’", data16.category, data16.type, data16.name, data16.address);
+          console.log("[StopName] zoom=16 →", data16.category, data16.type, data16.name, data16.address);
           stopName = null;
-          // Náº¿u zoom=16 tráº£ vá» tÃªn POI cÃ³ Ã½ nghÄ©a (khÃ´ng pháº£i road/null)
+          // Nếu zoom=16 trả về tên POI có ý nghĩa, không phải road/null.
           const allowedAreaText = `${data16.name || ""} ${data16.category || ""} ${data16.type || ""}`.toLowerCase();
           const isAllowedArea = /ktx|ký túc|ky tuc|dorm|dormitory|hostel|university|college|school|kindergarten|education|đại học|dai hoc|trường|truong|company|office|công ty|cong ty|government|administrative|public/.test(allowedAreaText);
           if (stopName === null && data16.category !== "highway" && isAllowedArea) {
@@ -480,14 +555,13 @@ class VehicleManager {
         } catch (_) { /* ignore */ }
       }
 
-      // â”€â”€ Phase 3: Overpass is_in (polygon containment check) â”€â”€â”€â”€â”€â”€
-      // Kiá»ƒm tra GPS cÃ³ náº±m trong polygon KTX/trÆ°á»ng/cÃ´ng ty khÃ´ng
+      // Phase 3: Overpass is_in để kiểm tra GPS có nằm trong polygon khu vực không.
       if (stopName === null) {
         try {
           const ctrl2 = new AbortController();
           setTimeout(() => ctrl2.abort(), 8000);
           const areaName = await this._containingAreaName(stop.lat, stop.lng, ctrl2.signal);
-          console.log("[StopName] Overpass is_in â†’", areaName);
+          console.log("[StopName] Overpass is_in →", areaName);
           stopName = areaName
             ? this._formatStopBaseName(areaName)
             : this._roadNameFromAddress(data18.address || {}, data18);
@@ -512,7 +586,7 @@ class VehicleManager {
 
   _ensureAutoStops(vehicle, lat, lng) {
     const vehicleId = vehicle.id;
-    const color = vehicle.routeColor || "#00d4ff";
+    const color = this._vehicleColor(vehicle);
     if (!this.autoStops[vehicleId]) this.autoStops[vehicleId] = [];
 
     const stops = this.autoStops[vehicleId];
@@ -646,7 +720,7 @@ class VehicleManager {
     const points = this.pathHistory[id] || [];
     if (!points || points.length < 2) return;
 
-    const color = vehicle.routeColor || "#00d4ff";
+    const color = this._vehicleColor(vehicle);
     if (this.trailSegmentLayers[id]?.length) {
       this.trailSegmentLayers[id].forEach(layer => {
         layer.setStyle({ color });
@@ -670,13 +744,13 @@ class VehicleManager {
     }
   }
 
-  // â”€â”€â”€ Icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Icon phương tiện
 
   createIcon(vehicle) {
     const isBus = vehicle.type === "bus";
     const isDelayed = vehicle.status === "delayed";
     const isFire = this.isFireAlert(vehicle);
-    const color = isFire ? "#ef4444" : (isDelayed ? "#ef4444" : (isBus ? "#00d4ff" : "#a855f7"));
+    const color = isFire ? "#ef4444" : (vehicle.vehicleColor || this._vehicleColor(vehicle));
     const emoji = isBus ? "&#128652;" : "&#128647;";
     const size = isBus ? 36 : 42;
 
@@ -694,7 +768,7 @@ class VehicleManager {
     });
   }
 
-  // â”€â”€â”€ Popup HTML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // HTML popup phương tiện
 
   buildPopup(v) {
     const pct = Math.round((v.passengers / v.capacity) * 100);
@@ -704,10 +778,11 @@ class VehicleManager {
     const statusLabel = v.status === "delayed" ? "Trễ giờ" : "Đúng giờ";
     const typeLabel = v.type === "bus" ? "&#128652; Xe Buýt" : "&#128647; Metro";
     const speedUnit = v.type === "metro" ? "km/h (tàu)" : "km/h";
+    const color = v.vehicleColor || this._vehicleColor(v);
 
     return this._fixText(`
       <div class="vehicle-popup">
-        <div class="vp-header" style="border-color: ${v.routeColor || "#00d4ff"}">
+        <div class="vp-header" style="border-color: ${color}">
           <span class="vp-type">${typeLabel}</span>
           <span class="vp-name">${v.name || v.id}</span>
           <span class="vp-status ${isFire ? "status-fire" : statusClass}">${isFire ? "CẢNH BÁO CHÁY" : statusLabel}</span>
@@ -719,7 +794,7 @@ class VehicleManager {
           </div>` : ""}
           <div class="vp-row">
             <span class="vp-label">Tuyến</span>
-            <span class="vp-val" style="color:${v.routeColor || "#00d4ff"}">${v.route || "-"}</span>
+            <span class="vp-val" style="color:${color}">${v.route || "-"}</span>
           </div>
           <div class="vp-row">
             <span class="vp-label">Điểm hiện tại</span>
@@ -751,10 +826,12 @@ class VehicleManager {
 
   update(vehicles) {
     const seen = new Set();
+    this._assignVehicleColors(vehicles);
 
     vehicles.forEach(v => {
       if (!v.lat || !v.lng) return;
       seen.add(v.id);
+      v.vehicleColor = this._vehicleColor(v);
 
       const visible = this.filterType === "all" || this.filterType === v.type;
       if (!v.isVirtual) {

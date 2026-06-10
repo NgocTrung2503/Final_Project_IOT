@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 //  DASHBOARD JS
 //  Thống kê và biểu đồ phương tiện giao thông
 // ============================================================
@@ -36,26 +36,56 @@ document.addEventListener("DOMContentLoaded", () => {
     const path = Array.isArray(route?.path) && route.path.length >= 2 ? route.path : route?.stops;
     if (!Array.isArray(path) || path.length < 2) return {};
 
-    const travelSeconds = 18;
-    const dwellSeconds = 5 + (busIndex % 3) * 2;
-    const elapsed = (Date.now() / 1000 + busIndex * 7) % ((travelSeconds * 2) + (dwellSeconds * 2));
-    let t;
-    if (elapsed < travelSeconds) t = elapsed / travelSeconds;
-    else if (elapsed < travelSeconds + dwellSeconds) t = 1;
-    else if (elapsed < travelSeconds * 2 + dwellSeconds) t = 1 - ((elapsed - travelSeconds - dwellSeconds) / travelSeconds);
-    else t = 0;
+    const travelSeconds = 24;
+    const phase = ((Date.now() / 1000 + busIndex * 7) % (travelSeconds * 2)) / travelSeconds;
+    const isReturning = phase > 1;
+    const t = isReturning ? 2 - phase : phase;
 
-    const scaled = t * (path.length - 1);
-    const index = Math.min(path.length - 2, Math.floor(scaled));
-    const local = scaled - index;
-    const a = path[index];
-    const b = path[index + 1];
+    const distance = (a, b) => {
+      const lat1 = Number(a.lat) * Math.PI / 180;
+      const lat2 = Number(b.lat) * Math.PI / 180;
+      const dLat = lat2 - lat1;
+      const dLng = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    };
+
+    const segments = path.slice(0, -1).map((point, index) => ({
+      a: point,
+      b: path[index + 1],
+      length: distance(point, path[index + 1]),
+    }));
+    const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+    let target = t * totalLength;
+    let segmentIndex = 0;
+    let segment = segments[0];
+
+    for (let i = 0; i < segments.length; i++) {
+      if (target <= segments[i].length) {
+        segmentIndex = i;
+        segment = segments[i];
+        break;
+      }
+      target -= segments[i].length;
+    }
+
+    const local = segment.length > 0 ? target / segment.length : 0;
+    const lat = Number(segment.a.lat) + (Number(segment.b.lat) - Number(segment.a.lat)) * local;
+    const lng = Number(segment.a.lng) + (Number(segment.b.lng) - Number(segment.a.lng)) * local;
+    const nearestStopIndex = (route.stops || []).reduce((bestIndex, stop, index, stops) => {
+      const best = stops[bestIndex];
+      const currentDist = distance({ lat, lng }, stop);
+      const bestDist = distance({ lat, lng }, best);
+      return currentDist < bestDist ? index : bestIndex;
+    }, 0);
 
     return {
-      lat: Number(a.lat) + (Number(b.lat) - Number(a.lat)) * local,
-      lng: Number(a.lng) + (Number(b.lng) - Number(a.lng)) * local,
-      currentStop: route.stops?.[index]?.name || a.name,
-      nextStop: route.stops?.[index + 1]?.name || b.name,
+      lat,
+      lng,
+      currentStop: route.stops?.[nearestStopIndex]?.name || path[segmentIndex]?.name,
+      nextStop: isReturning
+        ? route.stops?.[nearestStopIndex - 1]?.name || route.stops?.[nearestStopIndex]?.name || segment.a.name
+        : route.stops?.[nearestStopIndex + 1]?.name || route.stops?.[nearestStopIndex]?.name || segment.b.name,
     };
   }
 
@@ -101,6 +131,57 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ─── KPI Elements ────────────────────────────────────────
+  function updateGpsActualRouteCard() {
+    const infoEl = document.getElementById("gps-actual-route-info");
+    const stopsEl = document.getElementById("gps-actual-route-stops");
+    if (!infoEl || !stopsEl) return;
+
+    const realtime = latestFleet.find(v => v.id === realtimeVehicleId);
+    const autoStops = autoStopsByVehicle?.[realtimeVehicleId] || [];
+    const history = allHistoryByVehicle?.[realtimeVehicleId] || [];
+    const lastPoint = realtime || history[history.length - 1] || null;
+    const hasLiveGps = Boolean(realtime && realtime.gpsValid !== false && realtime.status !== "offline");
+    const statusText = hasLiveGps ? "&#272;ang ch&#7841;y realtime" : (lastPoint ? "D&#7919; li&#7879;u g&#7847;n nh&#7845;t" : "Ch&#432;a c&#243; d&#7919; li&#7879;u");
+    const statusColor = hasLiveGps ? "#22c55e" : (lastPoint ? "#f59e0b" : "#64748b");
+    const updatedAt = Number(lastPoint?.lastUpdated || lastPoint?.createdAt || 0);
+    const updateText = updatedAt
+      ? new Date(updatedAt).toLocaleString("vi-VN", { hour:"2-digit", minute:"2-digit", day:"2-digit", month:"2-digit" })
+      : "--:--";
+    const stopCount = autoStops.length;
+
+    infoEl.innerHTML = `
+      <div>&#128205; <strong>${stopCount}</strong> &#273;i&#7875;m d&#7915;ng</div>
+      <div>&#128336; Tr&#7841;ng th&#225;i: <strong style="color:${statusColor}">${statusText}</strong></div>
+      <div>&#9200; C&#7853;p nh&#7853;t: <strong style="color:#00d4ff">${updateText}</strong></div>
+    `;
+
+    const isGenericStopName = value => {
+      const text = String(value || "").trim().toLowerCase();
+      return !text || text === "trạm gps" || text === "tram gps";
+    };
+    const cleanStopName = value => String(value || "")
+      .trim()
+      .replace(/Th.nh Gi.ng/gi, "Thánh Gióng")
+      .replace(/Th�nh Gi�ng/gi, "Thánh Gióng")
+      .replace(/Th�nh Giọng/gi, "Thánh Gióng");
+    const labels = autoStops
+      .map(stop => !isGenericStopName(stop.baseName) ? stop.baseName : stop.name)
+      .map(cleanStopName)
+      .filter(label => !isGenericStopName(label))
+      .filter(Boolean);
+    if (!labels.length && (realtime?.currentStop || lastPoint?.currentStop)) {
+      labels.push(realtime?.currentStop || lastPoint?.currentStop);
+    }
+    if (!labels.length && (realtime?.nextStop || lastPoint?.nextStop)) {
+      labels.push(realtime?.nextStop || lastPoint?.nextStop);
+    }
+
+    const uniqueLabels = [...new Set(labels.filter(Boolean))];
+    stopsEl.innerHTML = uniqueLabels.length
+      ? uniqueLabels.map((label, index) => `<span style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted)">${index + 1}. ${label}</span>`).join("")
+      : '<span style="background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted)">Ch&#7901; d&#7919; li&#7879;u tr&#7841;m d&#7915;ng</span>';
+  }
+
   const kpiTotal    = document.getElementById("kpi-total");
   const kpiActive   = document.getElementById("kpi-active");
   const kpiDelayed  = document.getElementById("kpi-delayed");
@@ -422,8 +503,52 @@ document.addEventListener("DOMContentLoaded", () => {
     feed.insertBefore(el, feed.firstChild);
     while (feed.children.length > 12) feed.removeChild(feed.lastChild);
   }
+
+  function updateSmartMonitorStatus(vehicles) {
+    const feed = document.getElementById("smart-feed");
+    if (!feed) return;
+
+    let statusEl = document.getElementById("smart-status-card");
+    if (!statusEl) {
+      statusEl = [...feed.children].find(item =>
+        item.querySelector(".alert-title")?.textContent?.trim() === "AI đang giám sát"
+      );
+      if (!statusEl) {
+        statusEl = document.createElement("div");
+        statusEl.className = "alert-item";
+        feed.insertBefore(statusEl, feed.firstChild);
+      }
+      statusEl.id = "smart-status-card";
+    }
+
+    const total = vehicles.length;
+    const active = vehicles.filter(v => v.status !== "offline").length;
+    const delayed = vehicles.filter(v => v.status === "delayed").length;
+    const passengers = vehicles.reduce((sum, v) => sum + Number(v.passengers || 0), 0);
+    const nearFull = vehicles.filter(v => Number(v.passengers || 0) / Math.max(1, Number(v.capacity || 80)) >= 0.85);
+    const sparse = vehicles.filter(v => Number(v.passengers || 0) / Math.max(1, Number(v.capacity || 80)) <= 0.2);
+
+    const decision = nearFull.length
+      ? `Ưu tiên tăng chuyến cho ${nearFull[0].name || nearFull[0].id} vì tải cao.`
+      : delayed
+        ? `Theo dõi ${delayed} xe trễ để điều chỉnh ETA.`
+        : sparse.length && total > 1
+          ? `Có thể giãn chuyến ở xe vắng khách để tối ưu vận hành.`
+          : "Chưa cần can thiệp, tiếp tục giám sát dữ liệu realtime.";
+
+    statusEl.style.borderLeft = "3px solid var(--accent)";
+    statusEl.innerHTML = `
+      <span class="alert-icon">🤖</span>
+      <div class="alert-body">
+        <div class="alert-title">AI đang giám sát</div>
+        <div class="alert-msg">${active}/${total} xe hoạt động, ${passengers} hành khách. ${decision}</div>
+      </div>
+      <span class="alert-time">${new Date().toLocaleTimeString("vi-VN", { hour:"2-digit", minute:"2-digit" })}</span>`;
+  }
+
   function processScheduleOptimization(vehicles) {
     const now = Date.now();
+    updateSmartMonitorStatus(vehicles);
 
     vehicles.forEach(v => {
       const id = v.id || v.name || "bus";
@@ -505,6 +630,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const irChartData = [];
   let irChartObj = null;
   let allHistoryByVehicle = {};
+  let autoStopsByVehicle = {};
   let selectedIrVehicleId = realtimeVehicleId;
   let latestFleet = [];
   const lastSavedVirtualHistory = {};
@@ -520,6 +646,7 @@ document.addEventListener("DOMContentLoaded", () => {
     label.innerHTML = 'Xe: <select id="ir-vehicle-select" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:4px 8px; color:var(--text-primary); font-size:12px; cursor:pointer; min-width:120px;"></select>';
     datePicker.parentElement.parentElement.insertBefore(label, datePicker.parentElement);
     return document.getElementById("ir-vehicle-select");
+
   }
 
   function updateIrVehicleSelector(vehicles) {
@@ -527,10 +654,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!select) return;
 
     const previous = select.value || selectedIrVehicleId;
-    const options = [...vehicles];
+    const isHdVehicle = v => {
+      const text = `${v?.id || ""} ${v?.name || ""}`.toLowerCase();
+      return /\bh[đd]\b/.test(text) || /hoạt\s*động/.test(text) || /hoat\s*dong/.test(text);
+    };
+    const options = vehicles.filter(v => !isHdVehicle(v));
     Object.entries(allHistoryByVehicle || {}).forEach(([vehicleId, points]) => {
       if (options.some(v => v.id === vehicleId)) return;
       const lastPoint = points?.[points.length - 1] || {};
+      if (isHdVehicle({ id: vehicleId, name: lastPoint.name })) return;
       options.push({
         id: vehicleId,
         name: lastPoint.name || vehicleId,
@@ -598,7 +730,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el("db-ir-out")) el("db-ir-out").textContent = irOut;
     if (el("db-ir-total")) el("db-ir-total").textContent = passengers;
     if (el("db-ir-pct")) el("db-ir-pct").textContent = pct + "%";
-    if (el("db-ir-cap-label")) el("db-ir-cap-label").textContent = passengers + "/" + cap + " ch\u1ED7";
+    if (el("db-ir-cap-label")) el("db-ir-cap-label").textContent = passengers + "/" + cap + " chỗ";
     if (el("db-ir-capbar")) { el("db-ir-capbar").style.width = pct + "%"; el("db-ir-capbar").style.background = barColor; }
   }
 
@@ -714,7 +846,7 @@ document.addEventListener("DOMContentLoaded", () => {
       normalizedPoints = validPoints.map(p => ({ ...p, estimatedTime: p.createdAt }));
     } else if (millisPoints.length > 0) {
       // Chỉ ước lượng khi TOÀN BỘ dữ liệu đều là millis
-      // Tránh neo điểm quá khứ vào Date.now(). Dùng thời điểm cuối cùng của ngày được chọn nêú là quá khứ.
+      // Tránh neo điểm quá khứ vào Date.now(). Dùng thời điểm cuối cùng của ngày được chọn nếu là quá khứ.
       let anchorTime = isToday ? Date.now() : new Date(dateStr + "T23:59:59").getTime();
       const maxMillis = millisPoints[millisPoints.length - 1].createdAt;
       normalizedPoints = millisPoints.map(p => ({ ...p, estimatedTime: anchorTime - (maxMillis - p.createdAt) }));
@@ -786,12 +918,12 @@ document.addEventListener("DOMContentLoaded", () => {
         "background:" + (isIn ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)") + ";" +
         "border-left:3px solid " + (isIn ? "#22c55e" : "#ef4444") + "; font-size:12px;";
       item.innerHTML =
-        '<span style="font-size:14px">' + (isIn ? "\u25B2" : "\u25BC") + '</span>' +
+        '<span style="font-size:14px">' + (isIn ? "▲" : "▼") + '</span>' +
         '<div style="flex:1">' +
           '<span style="color:' + (isIn ? "#22c55e" : "#ef4444") + '; font-weight:600;">' +
-            (isIn ? "+" + ev.count + " l\u00EAn xe" : "-" + ev.count + " xu\u1ED1ng xe") +
+            (isIn ? "+" + ev.count + " lên xe" : "-" + ev.count + " xuống xe") +
           '</span>' +
-          '<span style="color:#4a5568; margin-left:4px;">\u2192 ' + ev.total + ' ng\u01B0\u1EDDi</span>' +
+          '<span style="color:#4a5568; margin-left:4px;">→ ' + ev.total + ' người</span>' +
           (ev.speed > 0 ? '<span style="color:#64748b; margin-left:6px; font-size:10px;">(' + Math.round(ev.speed) + ' km/h)</span>' : '') +
         '</div>' +
         '<span style="color:#4a5568; font-size:10px; white-space:nowrap;">' + ev.time + '</span>';
@@ -815,6 +947,7 @@ document.addEventListener("DOMContentLoaded", () => {
         updateHourlyChart(vehicles);
         const fleet = enrichVehiclesWithRoutes(buildVehicleFleet(vehicles));
         latestFleet = fleet;
+        updateGpsActualRouteCard();
         updateIrVehicleSelector(fleet);
         onVehicleData(fleet);
         const bus = fleet.find(v => v.id === selectedIrVehicleId) ||
@@ -837,7 +970,7 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           const tbody = document.getElementById("schedule-tbody");
           if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:30px; color:var(--text-muted);">' +
-            '\uD83D\uDCE1 Ch\u1EDD d\u1EEF li\u1EC7u t\u1EEB thi\u1EBFt b\u1ECB GPS / ESP32...</td></tr>';
+            '📡 Chờ dữ liệu từ thiết bị GPS / ESP32...</td></tr>';
         }
       });
 
@@ -845,6 +978,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fbService.onPassengerHistoryUpdate((history) => {
         allHistoryByVehicle = history || {};
         allHistoryPoints = allHistoryByVehicle[selectedIrVehicleId] || [];
+        updateGpsActualRouteCard();
         updateIrVehicleSelector(latestFleet);
         const selectedDatePicker = document.getElementById("ir-date-picker");
         const selectedToday = getLocalDateStr();
@@ -859,6 +993,11 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       // ── Date picker: khi đổi ngày → render lại ──
+      fbService.onAutoStopsUpdate((stopsByVehicle) => {
+        autoStopsByVehicle = stopsByVehicle || {};
+        updateGpsActualRouteCard();
+      });
+
       const datePicker = document.getElementById("ir-date-picker");
       if (datePicker) {
         datePicker.value = new Date().toISOString().split("T")[0];
@@ -871,6 +1010,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const firebaseVehicles = latestFleet.filter(v => !v.isVirtual);
         const fleet = enrichVehiclesWithRoutes(buildVehicleFleet(firebaseVehicles));
         latestFleet = fleet;
+        updateGpsActualRouteCard();
         updateIrVehicleSelector(fleet);
         onVehicleData(fleet);
         saveVirtualHistorySnapshots(fbService, fleet);
@@ -879,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     } catch (err) {
       console.error("Firebase dashboard error:", err);
-      addAlert("delay", "\u26A0\uFE0F", "L\u1ED7i Firebase", "Ki\u1EC3m tra l\u1EA1i API Key trong firebase-config.js");
+      addAlert("delay", "⚠️", "Lỗi Firebase", "Kiểm tra lại API Key trong firebase-config.js");
     }
 
   // ─── Smart Scheduling Feed ──────────────────────────────
