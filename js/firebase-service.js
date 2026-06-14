@@ -9,6 +9,7 @@ class FirebaseService {
     this.db = null;
     this.connected = false;
     this.listeners = {};
+    this.gpsRepairing = new Set();
     this.init();
   }
 
@@ -90,7 +91,7 @@ class FirebaseService {
 
   _normalizeVehicle(id, v) {
     const { lat, lng, gpsValid } = this._resolveVehicleCoords(v);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (!this._isValidGpsPoint(lat, lng)) return null;
 
     return {
       id,
@@ -108,6 +109,105 @@ class FirebaseService {
       speed:      (v.speed && v.speed < 5) ? 0 : (v.speed || 0),
       fireAlert:  this._toBool(v.fireAlert ?? v.fire ?? v.mq2Alert ?? v.smokeAlert ?? v.gasAlert ?? v.mq2Status),
     };
+  }
+
+  _hasInvalidRealtimeGps(v) {
+    const lat = Number(v?.lat ?? v?.latitude);
+    const lng = Number(v?.lng ?? v?.lon ?? v?.longitude);
+    return !this._isValidGpsPoint(lat, lng);
+  }
+
+  _historyEntries(points) {
+    if (!points) return [];
+    return Array.isArray(points)
+      ? points.map((p, index) => [p.id || String(index + 1), p])
+      : Object.entries(points || {});
+  }
+
+  async _latestValidHistoryPoint(vehicleId) {
+    if (!this.db || !vehicleId) return null;
+    const snap = await this.db.ref(`vehicleHistory/${vehicleId}`).once("value");
+    const points = this._historyEntries(snap.val())
+      .map(([id, p], index) => {
+        const createdAt = Number(p?.createdAt ?? p?.timestamp ?? id ?? index + 1);
+        return {
+          id,
+          lat: Number(p?.lat ?? p?.latitude),
+          lng: Number(p?.lng ?? p?.lon ?? p?.longitude),
+          createdAt: Number.isFinite(createdAt) ? createdAt : index + 1,
+          point: p,
+        };
+      })
+      .filter(p => this._isValidGpsPoint(p.lat, p.lng))
+      .sort((a, b) => b.createdAt - a.createdAt);
+
+    return points[0] || null;
+  }
+
+  async _removeInvalidHistoryPoint(vehicleId, v) {
+    if (!this.db || !vehicleId) return;
+    const key = v?.createdAt ?? v?.lastUpdated ?? v?.timestamp;
+    if (!key) return;
+
+    const ref = this.db.ref(`vehicleHistory/${vehicleId}/${key}`);
+    const snap = await ref.once("value");
+    const point = snap.val();
+    if (!point) return;
+
+    const lat = Number(point.lat ?? point.latitude);
+    const lng = Number(point.lng ?? point.lon ?? point.longitude);
+    if (!this._isValidGpsPoint(lat, lng)) {
+      await ref.remove();
+    }
+  }
+
+  async _repairRealtimeGpsPoint(vehicleId, v) {
+    if (!this.db || !vehicleId || !this._hasInvalidRealtimeGps(v)) return;
+    if (this.gpsRepairing.has(vehicleId)) return;
+    this.gpsRepairing.add(vehicleId);
+
+    try {
+      await this._removeInvalidHistoryPoint(vehicleId, v);
+
+      const fallbackLat = Number(v?.lastValidLat ?? v?.prevLat);
+      const fallbackLng = Number(v?.lastValidLng ?? v?.prevLng);
+      let nearest = this._isValidGpsPoint(fallbackLat, fallbackLng)
+        ? { lat: fallbackLat, lng: fallbackLng, point: v }
+        : await this._latestValidHistoryPoint(vehicleId);
+
+      if (!nearest || !this._isValidGpsPoint(nearest.lat, nearest.lng)) {
+        await this.db.ref(`vehicles/${vehicleId}`).update({
+          lat: null,
+          lng: null,
+          latitude: null,
+          longitude: null,
+          lon: null,
+          gpsValid: false,
+          lastUpdated: firebase.database.ServerValue.TIMESTAMP,
+        });
+        return;
+      }
+
+      await this.db.ref(`vehicles/${vehicleId}`).update({
+        lat: nearest.lat,
+        lng: nearest.lng,
+        latitude: null,
+        longitude: null,
+        lon: null,
+        lastValidLat: nearest.lat,
+        lastValidLng: nearest.lng,
+        gpsValid: false,
+        speed: 0,
+        currentStop: nearest.point?.currentStop || v.currentStop || "",
+        nextStop: nearest.point?.nextStop || v.nextStop || "",
+        routeId: nearest.point?.routeId || v.routeId || "",
+        lastUpdated: firebase.database.ServerValue.TIMESTAMP,
+      });
+    } catch (err) {
+      console.warn("GPS repair failed:", vehicleId, err);
+    } finally {
+      this.gpsRepairing.delete(vehicleId);
+    }
   }
 
   _normalizeStops(stops) {
@@ -247,7 +347,12 @@ class FirebaseService {
       if (data && typeof data === "object") {
         // Có dữ liệu → chuyển object thành mảng
         const vehicles = Object.entries(data)
-          .map(([id, v]) => this._normalizeVehicle(id, v))
+          .map(([id, v]) => {
+            if (this._hasInvalidRealtimeGps(v)) {
+              this._repairRealtimeGpsPoint(id, v);
+            }
+            return this._normalizeVehicle(id, v);
+          })
           .filter(Boolean);
           // Đảm bảo có các field tối thiểu
 
@@ -278,6 +383,11 @@ class FirebaseService {
       updateData.lastValidLng = nextLng;
       updateData.gpsValid = true;
     } else {
+      updateData.lat = null;
+      updateData.lng = null;
+      updateData.latitude = null;
+      updateData.longitude = null;
+      updateData.lon = null;
       updateData.gpsValid = false;
     }
 
@@ -301,11 +411,11 @@ class FirebaseService {
       nextData.lastValidLng = lng;
       nextData.gpsValid = true;
     } else {
-      delete nextData.lat;
-      delete nextData.lng;
-      delete nextData.latitude;
-      delete nextData.longitude;
-      delete nextData.lon;
+      nextData.lat = null;
+      nextData.lng = null;
+      nextData.latitude = null;
+      nextData.longitude = null;
+      nextData.lon = null;
       nextData.gpsValid = false;
     }
 
@@ -411,7 +521,8 @@ class FirebaseService {
     
     // Sửa lỗi ESP32 gửi millis(): Nếu timestamp < năm 2001 (1e12), tự động dùng thời gian thực của web
     let createdAt = Number(vehicle.lastUpdated);
-    if (!createdAt || createdAt < 1e12) {
+    const maxReasonableTimestamp = Date.now() + 24 * 60 * 60 * 1000;
+    if (!createdAt || createdAt < 1e12 || createdAt > maxReasonableTimestamp) {
       createdAt = Date.now();
     }
 
