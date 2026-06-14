@@ -469,20 +469,31 @@ document.addEventListener("DOMContentLoaded", () => {
   const irCapacityEl = document.getElementById("ir-capacity");
   const irBar = document.getElementById("ir-bar");
   const irPct = document.getElementById("ir-pct");
+  const irOverload = document.getElementById("ir-overload");
 
   function updateIrWidget(passengers, capacity) {
     if (!irTotal) return;
     const cap = capacity || 80;
-    const pct = Math.min(100, Math.round((passengers / cap) * 100));
+    const rawPct = Math.round((passengers / cap) * 100);
+    const pct = Math.min(100, rawPct);
+    const overload = Math.max(0, passengers - cap);
     irTotal.textContent = passengers;
+    irTotal.style.color = overload > 0 ? "#ef4444" : "#f0f4ff";
     if (irCapacityEl) irCapacityEl.textContent = `/${cap}`;
     if (irBar) {
       irBar.style.width = pct + "%";
-      irBar.style.background = pct > 80 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
-                               pct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
+      irBar.style.background = overload > 0 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
+                               rawPct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
                                "linear-gradient(90deg,#22c55e,#00d4ff)";
     }
-    if (irPct) irPct.textContent = pct + "% sức chứa";
+    if (irPct) {
+      irPct.textContent = `${rawPct}% sức chứa`;
+      irPct.style.color = overload > 0 ? "#ef4444" : "#4a5568";
+    }
+    if (irOverload) {
+      irOverload.style.display = overload > 0 ? "block" : "none";
+      irOverload.textContent = overload > 0 ? `Quá tải ${overload} khách` : "";
+    }
   }
 
   function setIrVehicle(vehicle, flashChanges = false) {

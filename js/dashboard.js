@@ -720,35 +720,47 @@ document.addEventListener("DOMContentLoaded", () => {
     const cap = bus.capacity || 80;
     const irIn = bus.irIn || 0;
     const irOut = bus.irOut || 0;
-    const pct = Math.min(100, Math.round((passengers / cap) * 100));
-    const barColor = pct > 80 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
-                     pct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
+    const rawPct = Math.round((passengers / cap) * 100);
+    const pct = Math.min(100, rawPct);
+    const overload = Math.max(0, passengers - cap);
+    const barColor = overload > 0 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
+                     rawPct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
                      "linear-gradient(90deg,#22c55e,#00d4ff)";
 
     const el = (id) => document.getElementById(id);
     if (el("db-ir-in"))  el("db-ir-in").textContent = irIn;
     if (el("db-ir-out")) el("db-ir-out").textContent = irOut;
-    if (el("db-ir-total")) el("db-ir-total").textContent = passengers;
-    if (el("db-ir-pct")) el("db-ir-pct").textContent = pct + "%";
+    if (el("db-ir-total")) { el("db-ir-total").textContent = passengers; el("db-ir-total").style.color = overload > 0 ? "#ef4444" : "#00d4ff"; }
+    if (el("db-ir-pct")) { el("db-ir-pct").textContent = rawPct + "%"; el("db-ir-pct").style.color = overload > 0 ? "#ef4444" : "#f59e0b"; }
     if (el("db-ir-cap-label")) el("db-ir-cap-label").textContent = passengers + "/" + cap + " chỗ";
     if (el("db-ir-capbar")) { el("db-ir-capbar").style.width = pct + "%"; el("db-ir-capbar").style.background = barColor; }
+    if (el("db-ir-overload")) {
+      el("db-ir-overload").style.display = overload > 0 ? "block" : "none";
+      el("db-ir-overload").textContent = overload > 0 ? `Quá tải +${overload} khách. Cần điều phối hoặc dừng nhận thêm khách.` : "";
+    }
   }
 
   // Cập nhật KPI cards từ dữ liệu history đã tính toán
   function _updateKpiFromHistory(totalIn, totalOut, lastPax) {
     const selectedVehicle = latestFleet.find(v => v.id === selectedIrVehicleId);
     const cap = selectedVehicle?.capacity || 80;
-    const pct = Math.min(100, Math.round((lastPax / cap) * 100));
-    const barColor = pct > 80 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
-                     pct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
+    const rawPct = Math.round((lastPax / cap) * 100);
+    const pct = Math.min(100, rawPct);
+    const overload = Math.max(0, lastPax - cap);
+    const barColor = overload > 0 ? "linear-gradient(90deg,#ef4444,#f59e0b)" :
+                     rawPct > 50 ? "linear-gradient(90deg,#f59e0b,#00d4ff)" :
                      "linear-gradient(90deg,#22c55e,#00d4ff)";
     const el = (id) => document.getElementById(id);
     if (el("db-ir-in"))      el("db-ir-in").textContent = totalIn;
     if (el("db-ir-out"))     el("db-ir-out").textContent = totalOut;
-    if (el("db-ir-total"))   el("db-ir-total").textContent = lastPax;
-    if (el("db-ir-pct"))     el("db-ir-pct").textContent = pct + "%";
+    if (el("db-ir-total"))   { el("db-ir-total").textContent = lastPax; el("db-ir-total").style.color = overload > 0 ? "#ef4444" : "#00d4ff"; }
+    if (el("db-ir-pct"))     { el("db-ir-pct").textContent = rawPct + "%"; el("db-ir-pct").style.color = overload > 0 ? "#ef4444" : "#f59e0b"; }
     if (el("db-ir-cap-label")) el("db-ir-cap-label").textContent = lastPax + "/" + cap + " chỗ";
     if (el("db-ir-capbar"))  { el("db-ir-capbar").style.width = pct + "%"; el("db-ir-capbar").style.background = barColor; }
+    if (el("db-ir-overload")) {
+      el("db-ir-overload").style.display = overload > 0 ? "block" : "none";
+      el("db-ir-overload").textContent = overload > 0 ? `Quá tải +${overload} khách. Cần điều phối hoặc dừng nhận thêm khách.` : "";
+    }
   }
 
   function renderSelectedIrPanel() {
