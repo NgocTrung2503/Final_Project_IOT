@@ -218,19 +218,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function buildVehicleFleet(firebaseVehicles = []) {
-    const realtimeVehicles = firebaseVehicles
-      .filter(v => v.id === realtimeVehicleId)
-      .map(v => ({
-        ...v,
-        isRealtime: true,
-      }));
+    const realtimeVehicles = firebaseVehicles.map(v => ({
+      ...v,
+      isRealtime: v.id === realtimeVehicleId,
+    }));
 
-    if (!realtimeVehicles.length) {
+    if (!realtimeVehicles.some(v => v.id === realtimeVehicleId)) {
       const fallbackRealtime = buildRealtimeVehicleFromHistory(realtimeVehicleId);
       if (fallbackRealtime) realtimeVehicles.push(fallbackRealtime);
     }
 
-    return [...realtimeVehicles, ...virtualBuses.map(materializeVirtualBus).filter(Boolean)];
+    const existingIds = new Set(realtimeVehicles.map(v => v.id));
+    const virtualFleet = virtualBuses
+      .filter(bus => !existingIds.has(bus.id))
+      .map(materializeVirtualBus)
+      .filter(Boolean);
+
+    return [...realtimeVehicles, ...virtualFleet];
   }
 
   function enrichVehiclesWithRoutes(vehicles) {

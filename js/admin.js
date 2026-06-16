@@ -213,8 +213,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // Thêm mới — vị trí mặc định trung tâm TP.HCM
         await db.ref(`vehicles/${id}`).set({
           ...vehicleData,
-          lat: 10.7769,
-          lng: 106.7009,
+          lat: 10.8503532,
+          lng: 106.7662343,
         });
         toast(`Thêm thành công: ${id}`, "success");
         log(`➕ Thêm phương tiện mới: ${id}`, "ok");

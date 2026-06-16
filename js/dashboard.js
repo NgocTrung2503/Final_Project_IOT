@@ -91,12 +91,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildVehicleFleet(firebaseVehicles = []) {
     const routes = window.BUS_ROUTES || [];
-    const realtimeVehicles = firebaseVehicles
-      .filter(v => v.id === realtimeVehicleId)
-      .map(v => ({
-        ...v,
-        isRealtime: true,
-      }));
+    const realtimeVehicles = firebaseVehicles.map(v => ({
+      ...v,
+      isRealtime: v.id === realtimeVehicleId,
+    }));
 
     const activeVirtualBuses = virtualBuses.map((bus, index) => {
       const route = routes.find(r => r.id === bus.routeId);
@@ -114,7 +112,10 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }).filter(Boolean);
 
-    return [...realtimeVehicles, ...activeVirtualBuses];
+    const existingIds = new Set(realtimeVehicles.map(v => v.id));
+    const virtualFleet = activeVirtualBuses.filter(bus => !existingIds.has(bus.id));
+
+    return [...realtimeVehicles, ...virtualFleet];
   }
 
   function enrichVehiclesWithRoutes(vehicles) {
